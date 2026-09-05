@@ -1,0 +1,17 @@
+[package]
+name = "githeaven"
+version = "0.1.0"
+description = "A focused Git workspace"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+notify = "8"
+
+[dev-dependencies]
+tempfile = "3"
