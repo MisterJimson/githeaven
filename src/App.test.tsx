@@ -310,9 +310,11 @@ it("keeps the viewed diff selected when an external refresh temporarily removes 
     watch_warning: null,
   });
   fireEvent.click(screen.getByRole("button", { name: "Refresh repository" }));
-  await screen.findByRole("option", {
-    name: "Working changes, 0 changed files",
-  });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("option", { name: /Working changes,/ }),
+    ).toBeNull(),
+  );
   expect(screen.getByTestId("diff-worktree")).toBe(diff);
   expect(diff.textContent).toBe("changed.txt");
 });

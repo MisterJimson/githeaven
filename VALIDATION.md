@@ -146,3 +146,7 @@ Graph badges now suffix local branches with a monitor, remote branches with a cl
 Checkout checks Git status under the write lock. With staged/unstaged/untracked changes it returns a stash-or-cancel prompt; only explicit confirmation stashes and switches. Stashes remain saved rather than being reapplied automatically. Failed switches retain the stash and report it. Stash commands bypass the global literal-pathspec setting, which otherwise left saved untracked files on disk and prevented a clean switch.
 
 All 48 frontend tests and seven Rust tests pass, including independent badge events, explicit stash confirmation/cancel, local/remote checkout, and restoration of staged, working, and untracked content from the resulting stash. Native verification selected a remote badge and observed the sidebar reveal/highlight without changing commit selection. A temporary untracked file triggered the prompt on a real double-click; Cancel kept main checked out and the file intact. The fixture was removed, leaving terminal clean. No commits or branch switches were performed in terminal.
+
+## Hide clean WIP row (2026-09-05)
+
+The graph includes its synthetic Working changes row only when staged or unstaged changes exist. Clean repositories start with a real commit, and ghost-only dashed edges are disabled. Regression coverage checks clean/dirty transitions, real-commit identity and click behavior, and an empty repository. All 48 frontend tests pass; the release builds.

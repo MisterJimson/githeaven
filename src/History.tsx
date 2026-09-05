@@ -44,19 +44,23 @@ export const History = memo(function History({
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const headingScroll = useRef<HTMLDivElement>(null);
+  const hasWorkingChanges = workingCount > 0;
   // A presentation-only child of HEAD, never a real commit or Git command input.
   const entries = useMemo<Commit[]>(
-    () => [
-      {
-        oid: "worktree",
-        parents: head ? [head] : [],
-        subject: "Working changes",
-        author: "",
-        timestamp: 0,
-      },
-      ...commits,
-    ],
-    [commits, head],
+    () =>
+      hasWorkingChanges
+        ? [
+            {
+              oid: "worktree",
+              parents: head ? [head] : [],
+              subject: "Working changes",
+              author: "",
+              timestamp: 0,
+            },
+            ...commits,
+          ]
+        : commits,
+    [commits, head, hasWorkingChanges],
   );
   const graph = useMemo(() => layoutGraph(entries), [entries]);
   const headIndex = entries.findIndex((commit) => commit.oid === head);
@@ -135,7 +139,7 @@ export const History = memo(function History({
           {virtual.getVirtualItems().map((item) => {
             const commit = entries[item.index];
             const row = graph[item.index];
-            const isWorking = item.index === 0;
+            const isWorking = hasWorkingChanges && item.index === 0;
             const commitRefs = refMap.get(commit.oid) ?? [];
             const rowColor = colors[row.color];
             const isSelected = isWorking
@@ -232,7 +236,10 @@ export const History = memo(function History({
                       d={`M ${22 + e.from * 16} 0 L ${22 + e.to * 16} 18.5`}
                       stroke={colors[e.color]}
                       strokeDasharray={
-                        head && item.index <= ghostEnd && e.from === 0
+                        hasWorkingChanges &&
+                        head &&
+                        item.index <= ghostEnd &&
+                        e.from === 0
                           ? "3 3"
                           : undefined
                       }
@@ -244,7 +251,10 @@ export const History = memo(function History({
                       d={`M ${22 + e.from * 16} 18.5 C ${22 + e.from * 16} 29, ${22 + e.to * 16} 27, ${22 + e.to * 16} 37`}
                       stroke={colors[e.color]}
                       strokeDasharray={
-                        head && item.index < ghostEnd && e.from === 0
+                        hasWorkingChanges &&
+                        head &&
+                        item.index < ghostEnd &&
+                        e.from === 0
                           ? "3 3"
                           : undefined
                       }

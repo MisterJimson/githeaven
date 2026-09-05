@@ -55,11 +55,22 @@ it("puts WIP in the graph above newer remote commits and connects it to HEAD's l
   expect(onSelect).not.toHaveBeenCalled();
   fireEvent.click(rows[1]);
   expect(onSelect).toHaveBeenCalledWith(props.commits[0]);
-  rerender(<History {...props} commits={[]} head={null} workingCount={0} />);
-  expect(screen.getAllByRole("option")).toHaveLength(1);
+  rerender(<History {...props} workingCount={0} />);
+  expect(screen.getAllByRole("option")).toHaveLength(2);
+  expect(screen.queryByText("Working changes")).toBeNull();
+  const first = screen.getAllByRole("option")[0];
+  expect(first).toBe(rows[1]);
   expect(
-    screen.getByRole("option", { name: "Working changes, 0 changed files" }),
-  ).toBe(rows[0]);
+    first.querySelector("circle")!.getAttribute("stroke-dasharray"),
+  ).toBeNull();
+  fireEvent.click(first);
+  expect(onSelect).toHaveBeenLastCalledWith(props.commits[0]);
+  rerender(<History {...props} workingCount={1} />);
+  expect(
+    screen.getByRole("option", { name: "Working changes, 1 changed file" }),
+  ).toBeTruthy();
+  rerender(<History {...props} commits={[]} head={null} workingCount={0} />);
+  expect(screen.queryAllByRole("option")).toHaveLength(0);
 });
 
 it("requests older commits near the bottom only while history is visible and has more", () => {
