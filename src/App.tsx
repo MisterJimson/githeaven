@@ -1702,9 +1702,6 @@ export function App() {
                                       ? "Write a summary to commit"
                                       : `Commit ${stagedChanges.length} ${stagedChanges.length === 1 ? "file" : "files"}`}
                               </button>
-                              <span className="local-commit">
-                                Local commit on {repo.branch}
-                              </span>
                             </div>
                           </div>
                           <div

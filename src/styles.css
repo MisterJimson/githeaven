@@ -879,15 +879,6 @@ kbd {
   width: 100%;
   flex-shrink: 0;
 }
-.local-commit {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 5px;
-  margin: 12px 0 3px;
-  font-size: 9px;
-  color: #7c9981;
-}
 .statusbar {
   height: 30px;
   display: flex;
@@ -1297,9 +1288,6 @@ kbd {
 .commit-form .primary-button {
   width: 100%;
   font-size: 11px;
-}
-.commit-form .local-commit {
-  margin: 8px 0 2px;
 }
 .commit-inspector .commit-details {
   flex-direction: column;
