@@ -23,6 +23,7 @@ import {
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
 import { call, errorText } from "./api";
+import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
 import { startForegroundTiming } from "./timing";
 import type { Selection, Versions } from "./types";
 
@@ -337,20 +338,32 @@ const emptyEditorSession: FileSession = {
 };
 export const EditorSurface = memo(function EditorSurface({
   session: selectedSession,
+  root,
+  refresh = 0,
   onChange,
   onReady,
 }: {
   session: FileSession | null;
+  root?: string;
+  refresh?: number;
   onChange: (text: string) => void;
   onReady: (ms: number, readMs: number) => void;
 }) {
   const { font, onKeyDownCapture } = useViewerFont("editor");
   const session = selectedSession ?? emptyEditorSession;
   const view = useRef<CodeViewHandle<undefined, undefined>>(null);
+  const { host, paint, schedule } = useEditorChanges(
+    root,
+    session.path,
+    session.contents,
+    session.version,
+    refresh,
+  );
   const current = useRef({ session, onReady });
   current.current = { session, onReady };
   const measured = useRef(0);
   const onPostRender = useCallback(() => {
+    paint();
     const opened = current.current.session;
     if (!opened.finishOpen || measured.current === opened.version) return;
     requestAnimationFrame(() => {
@@ -364,18 +377,26 @@ export const EditorSurface = memo(function EditorSurface({
       const ms = opened.finishOpen?.();
       if (ms != null) current.current.onReady(ms, opened.readMs ?? 0);
     });
-  }, []);
+  }, [paint]);
   useLayoutEffect(() => {
     // A different file starts at the top; same-file refreshes keep their viewport.
     view.current?.scrollTo({ type: "position", position: 0 });
   }, [session.path]);
   const options = useMemo(
-    () => ({ ...shared, ...font, onPostRender }),
+    () => ({
+      ...shared,
+      ...font,
+      unsafeCSS: font.unsafeCSS + changeGutterCSS,
+      onPostRender,
+    }),
     [onPostRender, font],
   );
   const change = useCallback(
-    (event: { file: { contents: string } }) => onChange(event.file.contents),
-    [onChange],
+    (event: { file: { contents: string } }) => {
+      schedule(event.file.contents);
+      onChange(event.file.contents);
+    },
+    [onChange, schedule],
   );
   const items = useMemo<CodeViewItem<undefined>[]>(
     () => [
@@ -392,6 +413,7 @@ export const EditorSurface = memo(function EditorSurface({
   );
   return (
     <div
+      ref={host}
       className="editor-live"
       tabIndex={0}
       aria-label="File viewer"

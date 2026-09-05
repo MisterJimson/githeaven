@@ -158,3 +158,11 @@ Removed the duplicate branch indicator and refresh button from the top toolbar. 
 ## Change-list arrow navigation (2026-09-05)
 
 Up/Down in the staged or unstaged file area now selects the adjacent file and opens its diff, preventing default page scrolling. Navigation is bounded within the focused section and uses its filtered, sorted file list. Path mode scrolls the virtual list to the selected file; Tree mode expands ancestors and reveals/focuses it. Mouse selection clears the prior keyboard reveal target. All 50 frontend tests pass, including both views, section boundaries, and filtered results.
+
+## Edit gutter changes against main — 2026-09-05
+
+- Added a read-only baseline lookup pinned to the local main commit. Missing main or unreadable baselines leave the gutter clear; a path absent from main is treated as added.
+- Pierre computes line ranges in a dedicated worker after a 120 ms typing debounce, including unsaved edits. Gutter decorations update in place and follow virtualized rows without replacing the document or changing line heights.
+- Green marks additions, blue marks replacements, and red triangles anchor deletions. Repository refreshes reread the main baseline; obsolete worker results are ignored.
+- Validation: 56 frontend tests, 8 Rust tests, TypeScript check, and Tauri release app build passed. Coverage includes insertion/replacement/deletion positions, absent paths, main versus feature/working contents, stale results, and stable gutter DOM.
+- Native app: verified green markers on a new file and a blue marker after an unsaved first-line edit to README.md. Undid the temporary edit and confirmed “Saved to disk”; no test edit saved.

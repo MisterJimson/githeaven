@@ -186,6 +186,18 @@ async fn read_file(
 }
 
 #[tauri::command]
+async fn main_file(
+    root: String,
+    path: String,
+    state: State<'_, Session>,
+) -> Result<Option<String>, String> {
+    let root = state.checked(&root)?;
+    tauri::async_runtime::spawn_blocking(move || main_file_contents(&root, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn save_file(
     root: String,
     path: String,
@@ -283,6 +295,7 @@ fn main() {
             commit_details,
             file_versions,
             read_file,
+            main_file,
             save_file,
             stage_file,
             stage_all_changes,

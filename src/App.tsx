@@ -1549,6 +1549,8 @@ export function App() {
                                             <EditorSurface
                                               key={repo.root}
                                               session={file}
+                                              root={repo.root}
+                                              refresh={tick}
                                               onChange={onEditorChange}
                                               onReady={recordFileTiming}
                                             />

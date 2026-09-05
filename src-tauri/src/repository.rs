@@ -358,6 +358,10 @@ pub fn read_working(root: &Path, path: &str) -> Result<Option<String>, String> {
     }
     text_content(fs::read(full).map_err(|e| e.to_string())?).map(Some)
 }
+pub fn main_file_contents(root: &Path, path: &str) -> Result<Option<String>, String> {
+    let oid = git_text(root, &["rev-parse", "--verify", "refs/heads/main^{commit}"])?;
+    read_blob(root, oid.trim(), path)
+}
 fn read_blob(root: &Path, revision: &str, path: &str) -> Result<Option<String>, String> {
     relative(path)?;
     let spec = format!("{revision}:{path}");
@@ -586,6 +590,26 @@ mod tests {
         git(dir.path(), &["config", "user.name", "Test"]).unwrap();
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
+    }
+    #[test]
+    fn editor_baseline_uses_main_not_index_or_head() {
+        let dir = repo();
+        let r = dir.path();
+        assert!(main_file_contents(r, "a.txt").is_err());
+        fs::write(r.join("a.txt"), "main\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        git(r, &["checkout", "-b", "feature"]).unwrap();
+        fs::write(r.join("a.txt"), "feature\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Feature"]).unwrap();
+        fs::write(r.join("a.txt"), "working\n").unwrap();
+        assert_eq!(
+            main_file_contents(r, "a.txt").unwrap(),
+            Some("main\n".into())
+        );
+        assert_eq!(main_file_contents(r, "new.txt").unwrap(), None);
+        assert!(main_file_contents(r, "../outside").is_err());
     }
     #[test]
     fn bulk_staging_preserves_files_and_handles_unborn_head() {
