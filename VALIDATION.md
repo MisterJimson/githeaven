@@ -150,3 +150,7 @@ All 48 frontend tests and seven Rust tests pass, including independent badge eve
 ## Hide clean WIP row (2026-09-05)
 
 The graph includes its synthetic Working changes row only when staged or unstaged changes exist. Clean repositories start with a real commit, and ghost-only dashed edges are disabled. Regression coverage checks clean/dirty transitions, real-commit identity and click behavior, and an empty repository. All 48 frontend tests pass; the release builds.
+
+## Simplified Git toolbar (2026-09-05)
+
+Removed the duplicate branch indicator and refresh button from the top toolbar. The bottom-left branch indicator remains. Automatic filesystem-event, focus, and periodic reconciliation refreshes remain enabled. The command-palette refresh action now bypasses the unsaved-navigation guard, matching automatic refresh behavior and preserving dirty editor drafts. All 48 frontend tests pass.

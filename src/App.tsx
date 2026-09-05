@@ -25,7 +25,6 @@ import {
   LoaderCircle,
   Minus,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Settings2,
@@ -1061,6 +1060,10 @@ export function App() {
     ];
   }, [repo, quickFiles, changes, dirty, busy]);
   function pickQuickItem(item: QuickItem) {
+    if (item.kind === "command" && item.value === "refresh") {
+      void refresh(true);
+      return;
+    }
     if (item.kind === "command" && item.value === "save") {
       void save();
       return;
@@ -1243,21 +1246,6 @@ export function App() {
                 <kbd>⌕</kbd>
               </label>
             )}
-            <span className="current-branch">
-              <GitBranch size={14} />
-              {repo.branch}
-            </span>
-            <button
-              className="icon-button"
-              aria-label="Refresh repository"
-              title="Refresh repository"
-              disabled={!!busy}
-              onClick={() => {
-                void refresh(true);
-              }}
-            >
-              <RefreshCw size={15} className={busy ? "spin" : ""} />
-            </button>
           </div>
           <div className="workspaces">
             <Suspense

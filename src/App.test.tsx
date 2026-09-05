@@ -84,6 +84,12 @@ vi.mock("./Surface", () => ({
   },
 }));
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
 });
@@ -132,6 +138,14 @@ async function openWorkspace(overrides: Partial<Snapshot> = {}) {
   });
   fireEvent.click(screen.getByRole("button", { name: "Open path" }));
   await screen.findByRole("button", { name: "Edit" });
+}
+
+function refreshWorkspace() {
+  fireEvent.keyDown(window, { key: "k", metaKey: true });
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "Refresh repository" },
+  });
+  fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
 }
 
 async function openEditor() {
@@ -309,7 +323,7 @@ it("keeps the viewed diff selected when an external refresh temporarily removes 
     elapsed_ms: 1,
     watch_warning: null,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Refresh repository" }));
+  refreshWorkspace();
   await waitFor(() =>
     expect(
       screen.queryByRole("option", { name: /Working changes,/ }),
@@ -476,12 +490,12 @@ it("refreshes the retained document without replacing an unsaved draft", async (
     if (command === "read_file") return disk;
     throw new Error(`Unexpected command: ${command}`);
   });
-  fireEvent.click(screen.getByRole("button", { name: "Refresh repository" }));
+  refreshWorkspace();
   await waitFor(() => expect(editor.value).toBe("external update"));
   expect(screen.getByLabelText("Test editor")).toBe(editor);
   fireEvent.change(editor, { target: { value: "my unsaved draft" } });
   disk = "another external update";
-  fireEvent.click(screen.getByRole("button", { name: "Refresh repository" }));
+  refreshWorkspace();
   await screen.findByText("File changed on disk. Your draft is preserved.");
   expect(editor.value).toBe("my unsaved draft");
 });
@@ -640,7 +654,7 @@ it("discards a stale refresh from before a stage without undoing the optimistic 
       return ++reads === 1 ? stale.promise : Promise.resolve(stagedSnapshot);
     throw new Error(`Unexpected command: ${command}`);
   });
-  fireEvent.click(screen.getByRole("button", { name: "Refresh repository" }));
+  refreshWorkspace();
   fireEvent.click(screen.getByRole("button", { name: "Stage all changes" }));
   await act(async () => write.resolve(undefined));
   expect(screen.getByRole("button", { name: "Staged Files (1)" })).toBeTruthy();
