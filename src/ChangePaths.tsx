@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FilePlus2, FileMinus2, Pencil, MoveRight } from "lucide-react";
 import type { Change } from "./types";
@@ -9,11 +9,13 @@ export function ChangePaths({
   staged,
   selected,
   onSelect,
+  revealPath,
 }: {
   paths: string[];
   changes: Change[];
   staged: boolean;
   selected?: string;
+  revealPath?: string;
   onSelect: (path: string) => void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -35,6 +37,11 @@ export function ChangePaths({
     overscan: 6,
     initialRect: { width: 330, height: 280 },
   });
+  useEffect(() => {
+    if (!revealPath) return;
+    const index = paths.indexOf(revealPath);
+    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" });
+  }, [revealPath, paths, virtual]);
   return (
     <div
       ref={scroll}

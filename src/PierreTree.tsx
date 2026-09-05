@@ -14,6 +14,7 @@ export function PierreTree({
   search = true,
   query,
   syncSelection = false,
+  revealPath,
 }: {
   paths: string[];
   changes?: Change[];
@@ -23,6 +24,7 @@ export function PierreTree({
   search?: boolean;
   query?: string;
   syncSelection?: boolean;
+  revealPath?: string;
 }) {
   const synchronizing = useRef(false);
   const callback = useRef(onSelect);
@@ -45,6 +47,15 @@ export function PierreTree({
   useEffect(() => {
     if (query !== undefined) model.setSearch(query || null);
   }, [model, query]);
+  useEffect(() => {
+    if (!revealPath) return;
+    const parts = revealPath.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const item = model.getItem(parts.slice(0, i).join("/"));
+      if (item && "expand" in item) item.expand();
+    }
+    model.scrollToPath(revealPath, { focus: true, offset: "nearest" });
+  }, [model, revealPath]);
   const previousPaths = useRef(paths);
   useEffect(() => {
     // Construction already loaded these paths. Refreshes often return the same list.

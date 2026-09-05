@@ -141,6 +141,7 @@ function ChangeFiles({
   onSelect: (path: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [keyboardPath, setKeyboardPath] = useState<string>();
   const searchable = paths.length > 20;
   const effectiveQuery = searchable ? query : "";
   useEffect(() => {
@@ -167,7 +168,42 @@ function ChangeFiles({
           onChange={(event) => setQuery(event.target.value)}
         />
       )}
-      <div className="change-file-views">
+      <div
+        className="change-file-views"
+        tabIndex={0}
+        aria-label={`${staged ? "Staged" : "Unstaged"} file navigation`}
+        onPointerDownCapture={() => setKeyboardPath(undefined)}
+        onKeyDownCapture={(event) => {
+          if (
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey ||
+            (event.key !== "ArrowDown" && event.key !== "ArrowUp")
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!filtered.length) return;
+          const current = selected ? filtered.indexOf(selected) : -1;
+          const index =
+            current < 0
+              ? event.key === "ArrowDown"
+                ? 0
+                : filtered.length - 1
+              : Math.max(
+                  0,
+                  Math.min(
+                    filtered.length - 1,
+                    current + (event.key === "ArrowDown" ? 1 : -1),
+                  ),
+                );
+          const path = filtered[index];
+          event.currentTarget.focus({ preventScroll: true });
+          setKeyboardPath(path);
+          onSelect(path);
+        }}
+      >
         <div
           className="change-file-view"
           aria-hidden={view !== "path"}
@@ -179,6 +215,7 @@ function ChangeFiles({
           }}
         >
           <ChangePaths
+            revealPath={view === "path" ? keyboardPath : undefined}
             paths={filtered}
             changes={changes}
             staged={staged}
@@ -207,6 +244,7 @@ function ChangeFiles({
             query={effectiveQuery}
             selected={selected}
             syncSelection
+            revealPath={view === "tree" ? keyboardPath : undefined}
           />
         </div>
       </div>

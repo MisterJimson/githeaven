@@ -8,6 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ChangeSections } from "./ChangeSections";
+import { useState } from "react";
+import type { Selection } from "./types";
 import type { Change } from "./types";
 
 vi.mock("./PierreTree", () => ({
@@ -145,4 +147,49 @@ it("keeps the flat file list bounded for large change sets", () => {
     within(screen.getByLabelText("Unstaged file paths")).getAllByRole("button")
       .length,
   ).toBeLessThan(30);
+});
+
+it("moves the selected diff with arrows in either view and keeps sections independent", () => {
+  const onSelect = vi.fn();
+  function Workspace() {
+    const [selected, setSelected] = useState<Selection | null>(null);
+    return (
+      <ChangeSections
+        changes={[...files(3), ...files(2, true)]}
+        selected={selected}
+        onSelect={(path, staged) => {
+          onSelect(path, staged);
+          setSelected({ path, source: staged ? "index" : "worktree" });
+        }}
+      />
+    );
+  }
+  render(<Workspace />);
+  const unstaged = screen.getByLabelText("Unstaged file navigation");
+  fireEvent.keyDown(unstaged, { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith("src/file-00.ts", false);
+  fireEvent.keyDown(unstaged, { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith("src/file-01.ts", false);
+  fireEvent.keyDown(unstaged, { key: "ArrowUp" });
+  expect(onSelect).toHaveBeenLastCalledWith("src/file-00.ts", false);
+  fireEvent.click(screen.getByRole("button", { name: "Tree" }));
+  fireEvent.keyDown(unstaged, { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith("src/file-01.ts", false);
+  const staged = screen.getByLabelText("Staged file navigation");
+  fireEvent.keyDown(staged, { key: "ArrowUp" });
+  expect(onSelect).toHaveBeenLastCalledWith("staged/file-01.ts", true);
+  fireEvent.keyDown(staged, { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith("staged/file-01.ts", true);
+});
+
+it("keyboard navigation respects the current search results", () => {
+  const onSelect = vi.fn();
+  render(<ChangeSections changes={files(21)} onSelect={onSelect} />);
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "file-19" },
+  });
+  fireEvent.keyDown(screen.getByLabelText("Unstaged file navigation"), {
+    key: "ArrowDown",
+  });
+  expect(onSelect).toHaveBeenLastCalledWith("src/file-19.ts", false);
 });

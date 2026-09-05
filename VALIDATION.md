@@ -154,3 +154,7 @@ The graph includes its synthetic Working changes row only when staged or unstage
 ## Simplified Git toolbar (2026-09-05)
 
 Removed the duplicate branch indicator and refresh button from the top toolbar. The bottom-left branch indicator remains. Automatic filesystem-event, focus, and periodic reconciliation refreshes remain enabled. The command-palette refresh action now bypasses the unsaved-navigation guard, matching automatic refresh behavior and preserving dirty editor drafts. All 48 frontend tests pass.
+
+## Change-list arrow navigation (2026-09-05)
+
+Up/Down in the staged or unstaged file area now selects the adjacent file and opens its diff, preventing default page scrolling. Navigation is bounded within the focused section and uses its filtered, sorted file list. Path mode scrolls the virtual list to the selected file; Tree mode expands ancestors and reveals/focuses it. Mouse selection clears the prior keyboard reveal target. All 50 frontend tests pass, including both views, section boundaries, and filtered results.
