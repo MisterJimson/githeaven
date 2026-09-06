@@ -312,6 +312,7 @@ async fn create_commit(
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Session::default())
         .invoke_handler(tauri::generate_handler![

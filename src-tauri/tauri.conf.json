@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Githeaven",
+        "visible": false,
         "width": 1480,
         "height": 940,
         "minWidth": 1000,
