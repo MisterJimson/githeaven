@@ -192,7 +192,9 @@ it("opens the last repository once on startup without showing the folder picker"
     }),
   );
   await act(async () => finish(restoredSnapshot));
-  expect(await screen.findByRole("button", { name: "Git" })).toBeTruthy();
+  expect(
+    await screen.findByRole("button", { name: /^Git \(\d+\)$/ }),
+  ).toBeTruthy();
   expect(localStorage.getItem("githeaven:last-repo")).toBe("/sample");
   expect(call).toHaveBeenCalledTimes(1);
 });
@@ -213,7 +215,9 @@ it("returns to folder selection after a failed restore and remembers the next su
     target: { value: "/sample" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Open path" }));
-  expect(await screen.findByRole("button", { name: "Git" })).toBeTruthy();
+  expect(
+    await screen.findByRole("button", { name: /^Git \(\d+\)$/ }),
+  ).toBeTruthy();
   expect(localStorage.getItem("githeaven:last-repo")).toBe("/sample");
   expect(call).toHaveBeenCalledTimes(2);
 });
@@ -228,7 +232,7 @@ it("reopens saved contents when switching away from and back to the editor", asy
         .disabled,
     ).toBe(true),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Git" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Git \(\d+\)$/ }));
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   expect(
     ((await screen.findByLabelText("Test editor")) as HTMLTextAreaElement)
@@ -271,12 +275,12 @@ it("preserves mounted views and selections across all tabs without repeating rea
   );
   const reads = vi.mocked(call).mock.calls.length;
   const loads = diffLoads.mock.calls.length;
-  for (const name of ["Git", "Edit", "Git", "Edit"]) {
+  for (const name of [/^Git \(\d+\)$/, "Edit", /^Git \(\d+\)$/, "Edit"]) {
     fireEvent.click(screen.getByRole("button", { name }));
   }
   expect(screen.getByLabelText("Test editor")).toBe(editor);
   expect(screen.getByRole("button", { name: "sample.txt" })).toBe(fileButton);
-  fireEvent.click(screen.getByRole("button", { name: "Git" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Git \(\d+\)$/ }));
   expect(
     screen.getByRole("listbox", { name: "Commit history", hidden: true }),
   ).toBe(graph);
@@ -289,7 +293,7 @@ it("preserves mounted views and selections across all tabs without repeating rea
 it("requires an explicit decision before leaving an unsaved editor", async () => {
   const editor = await openEditor();
   fireEvent.change(editor, { target: { value: "unsaved contents" } });
-  fireEvent.click(screen.getByRole("button", { name: "Git" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Git \(\d+\)$/ }));
   expect(await screen.findByRole("dialog")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
   expect(
@@ -1001,4 +1005,26 @@ it("reveals cached repositories synchronously without another Git open and recor
   ).toBe("true");
   await screen.findByText(/Cached repository switches p95 · 2 samples/);
   expect(opened).toEqual(["/other"]);
+});
+
+it("shows the number of uncommitted files in the Git tab, including staged files", async () => {
+  await openWorkspace();
+  expect(screen.getByRole("button", { name: "Git (0)" })).toBeTruthy();
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "refresh_repository")
+      return {
+        ...restoredSnapshot,
+        changes: [
+          { path: "a.ts", index: "M", worktree: "M" },
+          { path: "b.ts", index: "A", worktree: " " },
+          { path: "c.ts", index: "?", worktree: "?" },
+        ],
+      };
+    throw new Error(`Unexpected ${command}`);
+  });
+  refreshWorkspace();
+  await screen.findByRole("button", { name: "Git (3)" });
+  vi.mocked(call).mockResolvedValue(restoredSnapshot);
+  refreshWorkspace();
+  await screen.findByRole("button", { name: "Git (0)" });
 });

@@ -1273,7 +1273,7 @@ export function App() {
               {(
                 [
                   ["files", Files, "Edit"],
-                  ["history", GitFork, "Git"],
+                  ["history", GitFork, `Git (${changes.length})`],
                 ] as const
               ).map(([id, Icon, label]) => (
                 <button
