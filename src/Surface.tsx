@@ -1,5 +1,7 @@
 import {
   memo,
+  createContext,
+  useContext,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,22 +18,19 @@ import {
   type CodeViewHandle,
 } from "@pierre/diffs/react";
 import { Editor, type EditorFactory } from "@pierre/diffs/edit";
-import {
-  getSharedHighlighter,
-  type CodeViewItem,
-  type FileDiffMetadata,
-} from "@pierre/diffs";
+import { getSharedHighlighter, type CodeViewItem } from "@pierre/diffs";
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
-import { call, errorText } from "./api";
+import { DiffCache } from "./DiffCache";
+import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
 import { startForegroundTiming } from "./timing";
-import type { Selection, Versions } from "./types";
+import type { Change, Selection, Versions } from "./types";
 
 const poolOptions = {
   workerFactory: () => new HighlightWorker(),
   poolSize: 2,
-  totalASTLRUCacheSize: 12,
+  totalASTLRUCacheSize: 24,
 };
 const highlighterOptions = {
   theme: "pierre-dark" as const,
@@ -49,7 +48,99 @@ const highlighterOptions = {
 };
 const createEditor: EditorFactory<undefined, undefined> = (type, options) =>
   new Editor(type, { ...options, historyMaxEntries: 150 });
-export function PierreProvider({ children }: { children: React.ReactNode }) {
+const DiffCacheContext = createContext<DiffCache | null>(null);
+function PreparedDiffs({
+  children,
+  root,
+  changes,
+  refresh,
+  selection,
+  previews,
+}: {
+  children: React.ReactNode;
+  root?: string;
+  changes?: Change[];
+  refresh: number;
+  selection?: Selection | null;
+  previews?: Selection[];
+}) {
+  const pool = useWorkerPool();
+  const cache = useMemo(() => (pool ? new DiffCache(pool) : null), [pool]);
+  useEffect(() => {
+    if (!cache || !root || (!changes && !previews)) return;
+    let active = true;
+    const candidates: Selection[] = [...(previews ?? [])];
+    for (const change of previews ? [] : (changes ?? [])) {
+      if (change.worktree !== " ")
+        candidates.push({
+          path: change.path,
+          source: "worktree",
+          oldPath: change.original_path,
+        });
+      if (change.index !== " " && change.index !== "?")
+        candidates.push({
+          path: change.path,
+          source: "index",
+          oldPath: change.original_path,
+        });
+    }
+    const selectedIndex = candidates.findIndex(
+      (s) => s.path === selection?.path && s.source === selection?.source,
+    );
+    if (selectedIndex > 0)
+      candidates.unshift(...candidates.splice(selectedIndex, 1));
+    const timer = setTimeout(() => {
+      void (async () => {
+        // One speculative diff at a time; leave the second highlight worker free for clicks.
+        for (const candidate of candidates.slice(0, 24)) {
+          if (!active) break;
+          try {
+            await cache.prepare(
+              root,
+              candidate,
+              candidate.source === "commit" ? 0 : refresh,
+              false,
+            );
+          } catch {
+            /* Explicit selection reports errors. */
+          }
+        }
+      })();
+    }, 150);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [
+    cache,
+    root,
+    changes,
+    refresh,
+    selection?.path,
+    selection?.source,
+    previews,
+  ]);
+  return (
+    <DiffCacheContext.Provider value={cache}>
+      {children}
+    </DiffCacheContext.Provider>
+  );
+}
+export function PierreProvider({
+  children,
+  root,
+  changes,
+  refresh = 0,
+  selection,
+  previews,
+}: {
+  children: React.ReactNode;
+  root?: string;
+  changes?: Change[];
+  refresh?: number;
+  selection?: Selection | null;
+  previews?: Selection[];
+}) {
   useEffect(() => {
     let cancelled = false;
     // Editable documents use a main-thread highlighter, separate from the pool.
@@ -88,7 +179,17 @@ export function PierreProvider({ children }: { children: React.ReactNode }) {
         langs: [...highlighterOptions.langs],
       }}
     >
-      <EditProvider createEditor={createEditor}>{children}</EditProvider>
+      <EditProvider createEditor={createEditor}>
+        <PreparedDiffs
+          root={root}
+          changes={changes}
+          refresh={refresh}
+          selection={selection}
+          previews={previews}
+        >
+          {children}
+        </PreparedDiffs>
+      </EditProvider>
     </WorkerPoolContextProvider>
   );
 }
@@ -162,8 +263,6 @@ export const DiffSurface = memo(function DiffSurface(props: DiffProps) {
   return <LiveDiff key={comparison} {...props} comparison={comparison} />;
 });
 
-let nextDiffCacheKey = 0;
-
 function LiveDiff({
   root,
   selection,
@@ -175,101 +274,70 @@ function LiveDiff({
 }: DiffProps & { comparison: string }) {
   const { font, onKeyDownCapture } = useViewerFont("diff");
   const workerPool = useWorkerPool();
-  const [item, setItem] = useState<CodeViewItem<undefined> | null>(null);
+  const sharedCache = useContext(DiffCacheContext);
+  const localCache = useMemo(
+    () =>
+      new DiffCache(
+        workerPool ?? {
+          primeDiffHighlightCache: () =>
+            Promise.reject(new Error("Syntax highlighting is unavailable.")),
+        },
+      ),
+    [workerPool],
+  );
+  const cache = sharedCache ?? localCache;
+  const [initial] = useState(() => cache.peek(root, selection));
+  const [item, setItem] = useState<CodeViewItem<undefined> | null>(() =>
+    initial
+      ? { id: comparison, version: 1, type: "diff", fileDiff: initial.diff }
+      : null,
+  );
   const [error, setError] = useState("");
   const view = useRef<CodeViewHandle<undefined, undefined>>(null);
-  const loaded = useRef<Versions | null>(null);
-  const revision = useRef(0);
+  const loaded = useRef<Versions | null>(initial?.versions ?? null);
+  const revision = useRef(initial ? 1 : 0);
   const timing = useRef(onTiming);
   timing.current = onTiming;
   const started = useRef<{
     version: number;
     finish: () => number | null;
-  } | null>(null);
+  } | null>(initial ? { version: 1, finish: startForegroundTiming() } : null);
   const measured = useRef(0);
   const { path, source, oid, parent, oldPath } = selection;
 
   useEffect(() => {
     if (deferRefresh) return;
     let active = true;
-    let worker: Worker | undefined;
     setError("");
-    const timer = setTimeout(() => {
-      const finish = startForegroundTiming();
-      call<Versions>("file_versions", {
-        root,
-        path,
-        source,
-        oid: oid ?? null,
-        parent: parent ?? null,
-        oldPath: oldPath ?? null,
-      })
-        .then((data) => {
-          if (!active) return;
-          if (data.old === null && data.new === null) {
-            setError("This file no longer exists in this comparison.");
-            return;
-          }
-          // Repository events include unrelated files and focus/poll refreshes.
-          // Do not reparse or publish an identical snapshot.
-          if (
-            loaded.current?.old === data.old &&
-            loaded.current?.new === data.new
-          )
-            return;
-          worker = new Worker(new URL("./diff.worker.ts", import.meta.url), {
-            type: "module",
-          });
-          worker.onmessage = async (
-            event: MessageEvent<{ result?: FileDiffMetadata; error?: string }>,
-          ) => {
-            if (!active) return;
-            if (event.data.error) setError(event.data.error);
-            else if (event.data.result) {
-              const highlighted = {
-                ...event.data.result,
-                cacheKey: `githeaven-diff-${++nextDiffCacheKey}`,
-              };
-              try {
-                if (!workerPool)
-                  throw new Error("Syntax highlighting is unavailable.");
-                await workerPool.primeDiffHighlightCache(highlighted);
-              } catch (error) {
-                if (active) setError(errorText(error));
-                worker?.terminate();
-                return;
-              }
-              if (!active) return;
-              const version = ++revision.current;
-              loaded.current = data;
-              started.current = { version, finish };
-              // Pierre reconciles a stable id plus a new version in place, retaining
-              // the live viewer and its numeric line/viewport scroll anchor.
-              setItem({
-                id: comparison,
-                version,
-                type: "diff",
-                fileDiff: highlighted,
-              });
-            }
-            worker?.terminate();
-          };
-          worker.onerror = (event) => {
-            if (active) setError(event.message || "Diff worker failed");
-            worker?.terminate();
-          };
-          worker.postMessage({ path, old: data.old, new: data.new });
-        })
-        .catch((error) => {
-          if (active) setError(errorText(error));
+    const finish = startForegroundTiming();
+    void cache
+      .prepare(root, selection, refresh)
+      .then((prepared) => {
+        if (!active) return;
+        const data = prepared.versions;
+        if (
+          loaded.current?.old === data.old &&
+          loaded.current?.new === data.new
+        )
+          return;
+        const version = ++revision.current;
+        loaded.current = data;
+        started.current = { version, finish };
+        setItem({
+          id: comparison,
+          version,
+          type: "diff",
+          fileDiff: prepared.diff,
         });
-    }, 0);
+      })
+      .catch((error) => {
+        if (active) setError(errorText(error));
+      });
     return () => {
       active = false;
-      clearTimeout(timer);
-      worker?.terminate();
     };
   }, [
+    cache,
     root,
     path,
     source,
@@ -279,19 +347,19 @@ function LiveDiff({
     refresh,
     comparison,
     deferRefresh,
-    workerPool,
   ]);
 
   const onPostRender = useCallback(() => {
     const start = started.current;
-    if (
-      !start ||
-      measured.current === start.version ||
-      view.current?.getItem(comparison)?.version !== start.version
-    )
-      return;
-    measured.current = start.version;
+    if (!start || measured.current === start.version) return;
     requestAnimationFrame(() => {
+      if (
+        started.current !== start ||
+        measured.current === start.version ||
+        view.current?.getItem(comparison)?.version !== start.version
+      )
+        return;
+      measured.current = start.version;
       const elapsed = start.finish();
       if (started.current === start && elapsed !== null)
         timing.current(elapsed);

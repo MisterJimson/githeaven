@@ -726,6 +726,18 @@ export function App() {
     }
   }, [notice]);
 
+  const diffPreviews = useMemo<Selection[] | undefined>(
+    () =>
+      reviewKind === "commit" && selected
+        ? details.paths.map((path) => ({
+            path,
+            source: "commit",
+            oid: selected.oid,
+            parent: details.parent,
+          }))
+        : undefined,
+    [reviewKind, selected?.oid, details],
+  );
   const changes = useMemo(
     () =>
       stageOperations.reduce(
@@ -1309,7 +1321,13 @@ export function App() {
                 </div>
               }
             >
-              <PierreProvider>
+              <PierreProvider
+                root={repo.root}
+                changes={projectSettling || indexPending ? undefined : changes}
+                refresh={tick}
+                selection={selection}
+                previews={projectSettling ? undefined : diffPreviews}
+              >
                 {(["history", "files"] as const).map((paneMode) => {
                   const active = mode === paneMode;
                   return (
