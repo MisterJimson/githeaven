@@ -12,6 +12,7 @@ import {
   CodeView,
   EditProvider,
   WorkerPoolContextProvider,
+  useWorkerPool,
   type CodeViewHandle,
 } from "@pierre/diffs/react";
 import { Editor, type EditorFactory } from "@pierre/diffs/edit";
@@ -35,6 +36,8 @@ const poolOptions = {
 const highlighterOptions = {
   theme: "pierre-dark" as const,
   preferredHighlighter: "shiki-wasm" as const,
+  tokenizeMaxLineLength: 2000,
+  maxLineDiffLength: 2000,
   langs: [
     "typescript",
     "tsx",
@@ -159,6 +162,8 @@ export const DiffSurface = memo(function DiffSurface(props: DiffProps) {
   return <LiveDiff key={comparison} {...props} comparison={comparison} />;
 });
 
+let nextDiffCacheKey = 0;
+
 function LiveDiff({
   root,
   selection,
@@ -169,6 +174,7 @@ function LiveDiff({
   deferRefresh = false,
 }: DiffProps & { comparison: string }) {
   const { font, onKeyDownCapture } = useViewerFont("diff");
+  const workerPool = useWorkerPool();
   const [item, setItem] = useState<CodeViewItem<undefined> | null>(null);
   const [error, setError] = useState("");
   const view = useRef<CodeViewHandle<undefined, undefined>>(null);
@@ -214,12 +220,26 @@ function LiveDiff({
           worker = new Worker(new URL("./diff.worker.ts", import.meta.url), {
             type: "module",
           });
-          worker.onmessage = (
+          worker.onmessage = async (
             event: MessageEvent<{ result?: FileDiffMetadata; error?: string }>,
           ) => {
             if (!active) return;
             if (event.data.error) setError(event.data.error);
             else if (event.data.result) {
+              const highlighted = {
+                ...event.data.result,
+                cacheKey: `githeaven-diff-${++nextDiffCacheKey}`,
+              };
+              try {
+                if (!workerPool)
+                  throw new Error("Syntax highlighting is unavailable.");
+                await workerPool.primeDiffHighlightCache(highlighted);
+              } catch (error) {
+                if (active) setError(errorText(error));
+                worker?.terminate();
+                return;
+              }
+              if (!active) return;
               const version = ++revision.current;
               loaded.current = data;
               started.current = { version, finish };
@@ -229,7 +249,7 @@ function LiveDiff({
                 id: comparison,
                 version,
                 type: "diff",
-                fileDiff: event.data.result,
+                fileDiff: highlighted,
               });
             }
             worker?.terminate();
@@ -243,7 +263,7 @@ function LiveDiff({
         .catch((error) => {
           if (active) setError(errorText(error));
         });
-    }, 35);
+    }, 0);
     return () => {
       active = false;
       clearTimeout(timer);
@@ -259,6 +279,7 @@ function LiveDiff({
     refresh,
     comparison,
     deferRefresh,
+    workerPool,
   ]);
 
   const onPostRender = useCallback(() => {

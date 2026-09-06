@@ -20,11 +20,13 @@ import { DiffSurface, EditorSurface } from "./Surface";
 import { call } from "./api";
 import type { Versions } from "./types";
 
+const highlightPool = vi.hoisted(() => ({ primeDiffHighlightCache: vi.fn() }));
 const installed = vi.hoisted(() => vi.fn());
 const scrollTo = vi.hoisted(() => vi.fn());
 vi.mock("./api", () => ({ call: vi.fn(), errorText: String }));
 vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: class {} }));
 vi.mock("@pierre/diffs/react", () => ({
+  useWorkerPool: () => highlightPool,
   EditProvider: ({ children }: { children: ReactNode }) => children,
   WorkerPoolContextProvider: ({ children }: { children: ReactNode }) =>
     children,
@@ -86,6 +88,9 @@ class DiffWorker {
   }
 }
 beforeEach(() => {
+  highlightPool.primeDiffHighlightCache
+    .mockReset()
+    .mockResolvedValue(undefined);
   vi.stubGlobal("Worker", DiffWorker);
 });
 afterEach(() => {
@@ -110,7 +115,7 @@ async function finishWorker(index: number, text: string) {
   await waitFor(() =>
     expect(DiffWorker.instances.length).toBeGreaterThan(index),
   );
-  act(() => DiffWorker.instances[index].deliver(text));
+  await act(async () => DiffWorker.instances[index].deliver(text));
 }
 
 it("keeps the current diff and latest scroll position during an asynchronous refresh", async () => {
@@ -299,4 +304,47 @@ it("zooms only the focused viewer without replacing its document", () => {
   expect(viewer.getAttribute("data-css")).toContain("font-size: 13px");
   expect(localStorage.getItem("githeaven.editor-font-size")).toBe("13");
   expect(onChange).not.toHaveBeenCalled();
+});
+
+it("publishes a diff only after its syntax cache is ready, retaining the previous rendered diff during refresh", async () => {
+  let ready: () => void = () => {};
+  highlightPool.primeDiffHighlightCache.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        ready = resolve;
+      }),
+  );
+  vi.mocked(call).mockResolvedValue(versions("first"));
+  const { rerender } = render(<DiffSurface {...props} refresh={0} />);
+  await waitFor(() => expect(DiffWorker.instances.length).toBe(1));
+  act(() => DiffWorker.instances[0].deliver("first"));
+  await waitFor(() =>
+    expect(highlightPool.primeDiffHighlightCache).toHaveBeenCalled(),
+  );
+  expect(screen.queryByTestId("viewer")).toBeNull();
+  await act(async () => ready());
+  const viewer = await screen.findByTestId("viewer");
+  let updated: () => void = () => {};
+  highlightPool.primeDiffHighlightCache.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        updated = resolve;
+      }),
+  );
+  vi.mocked(call).mockResolvedValue(versions("second"));
+  rerender(<DiffSurface {...props} refresh={1} />);
+  await waitFor(() => expect(DiffWorker.instances.length).toBe(2));
+  act(() => DiffWorker.instances[1].deliver("second"));
+  await waitFor(() =>
+    expect(highlightPool.primeDiffHighlightCache).toHaveBeenCalledTimes(2),
+  );
+  expect(screen.getByTestId("viewer")).toBe(viewer);
+  const before = viewer.getAttribute("data-version");
+  await act(async () => updated());
+  expect(screen.getByTestId("viewer")).toBe(viewer);
+  expect(viewer.getAttribute("data-version")).not.toBe(before);
+  const keys = highlightPool.primeDiffHighlightCache.mock.calls.map(
+    ([diff]) => diff.cacheKey,
+  );
+  expect(new Set(keys).size).toBe(2);
 });
