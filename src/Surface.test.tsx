@@ -198,8 +198,14 @@ it("rejects superseded parses and resets only when navigating to another compari
       refresh={1}
     />,
   );
-  expect(screen.queryByTestId("viewer")).toBeNull();
+  const previous = screen.getByTestId("viewer");
+  previous.scrollTop = 400;
+  expect(previous.textContent).toBe("latest");
+  expect(screen.queryByText("Loading comparison…")).toBeNull();
+  const resets = scrollTo.mock.calls.length;
   await finishWorker(2, "other");
+  expect(screen.getByTestId("viewer")).toBe(previous);
+  expect(scrollTo.mock.calls.length).toBe(resets + 1);
   expect(screen.getByTestId("viewer").textContent).toBe("other");
 });
 
@@ -347,4 +353,21 @@ it("publishes a diff only after its syntax cache is ready, retaining the previou
     ([diff]) => diff.cacheKey,
   );
   expect(new Set(keys).size).toBe(2);
+});
+
+it("switches to a different file even when its contents match the previous file", async () => {
+  vi.mocked(call).mockResolvedValue(versions("same"));
+  const { rerender } = render(<DiffSurface {...props} refresh={0} />);
+  await finishWorker(0, "first.ts");
+  const viewer = screen.getByTestId("viewer");
+  rerender(
+    <DiffSurface
+      {...props}
+      selection={{ ...props.selection, path: "second.ts" }}
+      refresh={0}
+    />,
+  );
+  expect(viewer.textContent).toBe("first.ts");
+  await finishWorker(1, "second.ts");
+  expect(viewer.textContent).toBe("second.ts");
 });

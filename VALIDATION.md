@@ -204,3 +204,9 @@ Up/Down in the staged or unstaged file area now selects the adjacent file and op
 - Existing displayed diffs survive refresh failures and background updates. Clicks can attach to in-flight preparation instead of duplicating work. The render-timing callback checks the CodeView handle on the next frame so an already-ready first mount can be measured too.
 - Validation: 66 frontend tests and release app build passed. New tests verify request deduplication, synchronous cache availability, revalidation, AST eviction, entry bounds, and source separation; existing stale-response, syntax-first-render, scroll, and staging tests remain passing. Native terminal-repo selection rendered a prepared comparison; no quantitative latency claim is based on that screenshot/AX observation.
 - Cold or evicted files still require preparation. This change accelerates ready selections rather than disguising cold work with stale content from a different file.
+
+## Retain diff while switching files — 2026-09-06
+
+- File selection no longer remounts the diff surface. It keeps the displayed document and scroll position until the requested comparison finishes preparing, then installs the replacement and resets its scroll to the top. Same-file refreshes continue preserving scrolling.
+- Comparison identity is checked alongside contents so distinct files with identical content still replace each other. Failed loads retain the prior diff with the existing error notice; stale requests cannot replace a newer selection. Repository changes still isolate the viewer.
+- Validation: 67 frontend tests passed, covering retained DOM/content during delayed file selection, scroll reset only at replacement, identical-content file navigation, and existing stale-result/highlighting behavior.

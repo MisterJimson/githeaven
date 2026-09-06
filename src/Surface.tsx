@@ -259,8 +259,8 @@ export const DiffSurface = memo(function DiffSurface(props: DiffProps) {
     parent ?? null,
     source === "commit" ? (oldPath ?? null) : null,
   ]);
-  // Moving a working file between index and worktree retains its viewport too.
-  return <LiveDiff key={comparison} {...props} comparison={comparison} />;
+  // Keep the previous document mounted while another file is prepared.
+  return <LiveDiff key={root} {...props} comparison={comparison} />;
 });
 
 function LiveDiff({
@@ -295,6 +295,7 @@ function LiveDiff({
   const [error, setError] = useState("");
   const view = useRef<CodeViewHandle<undefined, undefined>>(null);
   const loaded = useRef<Versions | null>(initial?.versions ?? null);
+  const loadedComparison = useRef(initial ? comparison : null);
   const revision = useRef(initial ? 1 : 0);
   const timing = useRef(onTiming);
   timing.current = onTiming;
@@ -316,12 +317,14 @@ function LiveDiff({
         if (!active) return;
         const data = prepared.versions;
         if (
+          loadedComparison.current === comparison &&
           loaded.current?.old === data.old &&
           loaded.current?.new === data.new
         )
           return;
         const version = ++revision.current;
         loaded.current = data;
+        loadedComparison.current = comparison;
         started.current = { version, finish };
         setItem({
           id: comparison,
@@ -348,6 +351,12 @@ function LiveDiff({
     comparison,
     deferRefresh,
   ]);
+
+  useLayoutEffect(() => {
+    // Reset only when the prepared replacement is installed, never while waiting
+    // or refreshing the currently displayed file.
+    if (item) view.current?.scrollTo({ type: "position", position: 0 });
+  }, [item?.id]);
 
   const onPostRender = useCallback(() => {
     const start = started.current;
