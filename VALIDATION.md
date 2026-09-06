@@ -217,3 +217,10 @@ Up/Down in the staged or unstaged file area now selects the adjacent file and op
 - Added oxlint 1.81.0 and oxfmt 0.66.0 with committed configuration and lint/format/format:check scripts. Applied the formatter baseline and rewrote one side-effect ternary as an if/else to satisfy the linter without changing behavior.
 - Tauri hooks, runtime development hints, README commands, and AGENTS.md now use pnpm. pnpm-workspace.yaml allows only esbuild's required dependency build script.
 - Validation: `pnpm install --frozen-lockfile` and `pnpm check` passed, including lint with warnings denied, formatting checks, 67 frontend tests, frontend build, and 11 Rust tests. The imported graph retains the existing Pierre theming peer-version warning; no unrelated dependency upgrades were introduced to address it.
+
+## React Compiler
+
+- Enabled pinned `babel-plugin-react-compiler` 1.0.0 through the existing Vite React plugin, targeting React 19. Vitest uses this same configuration.
+- An isolated Babel diagnostic pass over non-test TypeScript sources reported eight compiled functions: ChangeSections, ChangeFiles, CommitNode, QuickOpen, PierreProvider, useViewerFont, DiffSurface, and useEditorChanges. Production output contains compiler memo-cache code in the main and Surface bundles.
+- Other functions safely bail out on unsupported control flow, render-time ref access, or incompatible virtualizer APIs. Existing manual memoization is retained. No latency improvement is claimed without a native before/after measurement.
+- `pnpm check` passed: oxlint, oxfmt, 67 frontend tests, production build, and 11 Rust tests.
