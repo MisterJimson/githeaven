@@ -276,17 +276,19 @@ kbd {
   padding-bottom: 20px;
 }
 .branch-group {
-  margin-top: 6px;
+  margin-top: 0;
+  padding: 0 10px;
+  letter-spacing: 0.5px;
 }
 .branch-row {
   display: flex;
   width: 100%;
-  height: 30px;
-  padding: 0 18px 0 24px;
+  height: 100%;
+  padding: 0 10px 0 16px;
   justify-content: flex-start;
   color: #95a59c;
   font-size: 11px;
-  gap: 9px;
+  gap: 6px;
 }
 .branch-row > span {
   overflow: hidden;
@@ -307,7 +309,7 @@ kbd {
 .no-refs {
   font-size: 11px;
   color: #5a6a60;
-  padding: 7px 25px;
+  padding: 3px 16px;
   display: block;
 }
 .status-dot {
@@ -1306,16 +1308,18 @@ kbd {
   display: none;
 }
 .branch-search {
-  margin: 4px 12px 8px;
-  width: calc(100% - 24px);
-  padding: 7px 9px;
+  margin: 3px 8px 4px;
+  width: calc(100% - 16px);
+  height: 26px;
+  padding: 3px 7px;
   font-size: 11px;
 }
 .checked-out-branch {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 15px 12px;
+  padding: 3px 10px;
+  min-height: 24px;
   color: var(--mint);
   font-size: 11px;
 }
@@ -1628,4 +1632,16 @@ kbd {
 }
 .commit-row:has(.ref-badge:hover):not(.selected) {
   background: transparent;
+}
+
+.sidebar-link.branch-all {
+  height: 24px;
+  min-height: 24px;
+  margin: 2px 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.branch-row > svg {
+  flex-shrink: 0;
 }

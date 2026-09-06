@@ -71,7 +71,7 @@ export const BranchSidebar = memo(function BranchSidebar({
     count: rows.length,
     getScrollElement: () => scroll.current,
     getItemKey: (index) => rows[index].key,
-    estimateSize: (index) => (rows[index].type === "header" ? 42 : 30),
+    estimateSize: (index) => (rows[index].type === "header" ? 26 : 22),
     overscan: 6,
     initialRect: { width: 223, height: 600 },
   });
@@ -87,7 +87,6 @@ export const BranchSidebar = memo(function BranchSidebar({
   }, [activeRef, rows, virtual]);
   return (
     <>
-      <div className="section-label">REPOSITORY</div>
       <input
         className="branch-search"
         aria-label="Filter branches"
@@ -104,7 +103,7 @@ export const BranchSidebar = memo(function BranchSidebar({
         <span>checked out</span>
       </div>
       <button
-        className={`sidebar-link ${!branchFilter ? "active" : ""}`}
+        className={`sidebar-link branch-all ${!branchFilter ? "active" : ""}`}
         onClick={() => onFilter("")}
       >
         <Layers size={15} />

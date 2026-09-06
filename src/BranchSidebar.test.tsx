@@ -29,17 +29,17 @@ it("keeps large ref lists bounded while allowing scrolling to remote branches", 
       onFilter={onFilter}
     />,
   );
-  expect(screen.getAllByRole("button").length).toBeLessThan(40);
+  expect(screen.getAllByRole("button").length).toBeLessThan(50);
   fireEvent.click(screen.getByRole("button", { name: "branch-0" }));
   expect(onFilter).toHaveBeenLastCalledWith("local-0");
   const list = screen.getByLabelText("Branches and tags");
-  list.scrollTop = 30042;
+  list.scrollTop = 22026;
   fireEvent.scroll(list);
   fireEvent.click(
     await screen.findByRole("button", { name: "origin/branch-0" }),
   );
   expect(onFilter).toHaveBeenLastCalledWith("remote-0");
-  expect(screen.getAllByRole("button").length).toBeLessThan(40);
+  expect(screen.getAllByRole("button").length).toBeLessThan(50);
 });
 
 it("filters and collapses branches and only checks out on double click", async () => {
