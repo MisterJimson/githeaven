@@ -1623,9 +1623,9 @@ kbd {
 }
 .ref-badge:hover,
 .ref-badge:focus-visible {
-  filter: brightness(1.5);
-  outline: 1px solid currentColor;
-  outline-offset: 1px;
+  box-shadow: inset 0 0 0 100px
+    color-mix(in srgb, currentColor 24%, transparent);
+  outline: none;
 }
 .ref-badge > svg {
   flex-shrink: 0;
