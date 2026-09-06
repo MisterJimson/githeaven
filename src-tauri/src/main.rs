@@ -5,6 +5,7 @@ use notify::{RecursiveMode, Watcher};
 use repository::*;
 use serde::Serialize;
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -13,18 +14,16 @@ use tauri::{Emitter, State};
 
 #[derive(Default)]
 struct Session {
-    root: Mutex<Option<PathBuf>>,
-    watcher: Mutex<Option<notify::RecommendedWatcher>>,
+    repositories: Mutex<HashMap<PathBuf, Option<notify::RecommendedWatcher>>>,
     writes: Arc<Mutex<()>>,
 }
 impl Session {
     fn checked(&self, root: &str) -> Result<PathBuf, String> {
-        let selected = self.root.lock().map_err(|e| e.to_string())?;
-        selected
-            .as_ref()
-            .filter(|p| p.to_string_lossy() == root)
-            .cloned()
-            .ok_or_else(|| "Repository changed. Reopen it and try again.".into())
+        let repositories = self.repositories.lock().map_err(|e| e.to_string())?;
+        repositories
+            .get_key_value(&PathBuf::from(root))
+            .map(|(path, _)| path.clone())
+            .ok_or_else(|| "Repository is not open. Reopen it and try again.".into())
     }
 }
 
@@ -115,9 +114,22 @@ async fn open_repository(
             .map_err(|e| e.to_string())??;
     let watcher = watch(app, root.clone());
     snap.watch_warning = watcher.as_ref().err().cloned();
-    *state.watcher.lock().map_err(|e| e.to_string())? = watcher.ok();
-    *state.root.lock().map_err(|e| e.to_string())? = Some(root.clone());
+    state
+        .repositories
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(root, watcher.ok());
     Ok(snap)
+}
+
+#[tauri::command]
+fn close_repository(root: String, state: State<'_, Session>) -> Result<(), String> {
+    state
+        .repositories
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&PathBuf::from(root));
+    Ok(())
 }
 
 #[tauri::command]
@@ -291,6 +303,7 @@ fn main() {
         .manage(Session::default())
         .invoke_handler(tauri::generate_handler![
             open_repository,
+            close_repository,
             refresh_repository,
             commit_details,
             file_versions,
@@ -304,4 +317,23 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("Unable to start Githeaven");
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    #[test]
+    fn open_sessions_remain_accessible_until_closed() {
+        let session = Session::default();
+        let a = PathBuf::from("/repo-a");
+        let b = PathBuf::from("/repo-b");
+        session.repositories.lock().unwrap().insert(a.clone(), None);
+        session.repositories.lock().unwrap().insert(b.clone(), None);
+        assert_eq!(session.checked("/repo-a").unwrap(), a);
+        assert_eq!(session.checked("/repo-b").unwrap(), b);
+        assert!(session.checked("/unopened").is_err());
+        session.repositories.lock().unwrap().remove(&a);
+        assert!(session.checked("/repo-a").is_err());
+        assert!(session.checked("/repo-b").is_ok());
+    }
 }

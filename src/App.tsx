@@ -91,6 +91,8 @@ function mergeSnapshot(
 }
 
 interface ProjectView {
+  snapshot: Snapshot;
+  limit: number;
   mode: Mode;
   selected: Commit | null;
   parent: string | null;
@@ -193,6 +195,16 @@ export function App() {
       return startupPath ? [startupPath] : [];
     }
   });
+  const [projectSettling, setProjectSettling] = useState(false);
+  const [projectTimes, setProjectTimes] = useState<
+    { cached: boolean; paint: number | null; commit: number }[]
+  >([]);
+  const projectTiming = useRef<{
+    root: string;
+    start: number;
+    finish: () => number | null;
+    cached: boolean;
+  } | null>(null);
   const projectViews = useRef(new Map<string, ProjectView>());
   useEffect(() => {
     localStorage.setItem("githeaven.projects", JSON.stringify(projects));
@@ -330,6 +342,8 @@ export function App() {
     if (repoRef.current?.root === path.trim()) return true;
     if (repo)
       projectViews.current.set(repo.root, {
+        snapshot: repo,
+        limit: limitRef.current,
         mode,
         selected,
         parent,
@@ -350,16 +364,27 @@ export function App() {
         reviewKind,
         diffOpen,
       });
-    setBusy("Opening repository");
+    setProjectSettling(true);
+    const saved = projectViews.current.get(path.trim());
+    projectTiming.current = {
+      root: path.trim(),
+      start: performance.now(),
+      finish: startForegroundTiming(),
+      cached: !!saved,
+    };
+    if (!saved || stageRunning.current) setBusy("Opening repository");
     setError("");
     const gen = ++generation.current;
     try {
-      await stageCompletion.current;
-      const next = await call<Snapshot>("open_repository", {
-        path: path.trim(),
-      });
+      if (stageRunning.current) await stageCompletion.current;
+      const next =
+        saved?.snapshot ??
+        (await call<Snapshot>("open_repository", {
+          path: path.trim(),
+        }));
       if (generation.current !== gen) return;
       const cached = projectViews.current.get(next.root);
+      if (projectTiming.current) projectTiming.current.root = next.root;
       setProjects((paths) => [
         ...new Set([
           ...paths.filter(
@@ -368,6 +393,7 @@ export function App() {
           next.root,
         ]),
       ]);
+      repoRef.current = next;
       setRepo(next);
       setActiveRef(null);
       setCheckoutPrompt(null);
@@ -376,7 +402,7 @@ export function App() {
       setMode(cached?.mode ?? "history");
       setFilter(cached?.filter ?? "");
       setBranchFilter(cached?.branchFilter ?? "");
-      limitRef.current = 500;
+      limitRef.current = cached?.limit ?? 500;
       setSelected(cached?.selected ?? next.commits?.[0] ?? null);
       setParent(cached?.parent ?? null);
       setDetails(cached?.details ?? emptyDetails);
@@ -410,12 +436,38 @@ export function App() {
       localStorage.setItem("githeaven:last-repo", next.root);
       return true;
     } catch (e) {
+      setProjectSettling(false);
       report(e);
       return false;
     } finally {
-      setBusy("");
+      if (generation.current === gen) setBusy("");
     }
   }
+  useLayoutEffect(() => {
+    const measurement = projectTiming.current;
+    if (!measurement || measurement.root !== repo?.root) return;
+    projectTiming.current = null;
+    const commit = performance.now() - measurement.start;
+    const gen = generation.current;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        if (generation.current !== gen) return;
+        const paint = measurement.finish();
+        setProjectSettling(false);
+        setProjectTimes((values) => [
+          ...values.slice(-49),
+          { cached: measurement.cached, paint, commit },
+        ]);
+        // Refresh only after the cached workspace has had a paint opportunity.
+        if (measurement.cached) void refresh(true);
+      });
+    });
+    let second = 0;
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [repo?.root, refresh]);
   useEffect(() => {
     // Only restore on launch, including React's development effect replay.
     // A missing folder returns to the picker without retrying on each render.
@@ -431,6 +483,7 @@ export function App() {
   function closeProject(path: string) {
     const remove = () => {
       projectViews.current.delete(path);
+      void call("close_repository", { root: path }).catch(report);
       setProjects((paths) => paths.filter((entry) => entry !== path));
     };
     if (repo?.root !== path) {
@@ -1299,20 +1352,22 @@ export function App() {
                               EXPLORER<span>{repo.files.length} files</span>
                             </div>
                             <div className="tree-wrap">
-                              <PierreTree
-                                key={repo.root}
-                                paths={repo.files}
-                                changes={changes}
-                                selected={file?.path}
-                                syncSelection
-                                revealPath={active ? file?.path : undefined}
-                                revealFocus={false}
-                                onSelect={(path) =>
-                                  navigate(() => {
-                                    void openFile(path);
-                                  })
-                                }
-                              />
+                              {(active || file) && (
+                                <PierreTree
+                                  key={repo.root}
+                                  paths={repo.files}
+                                  changes={changes}
+                                  selected={file?.path}
+                                  syncSelection
+                                  revealPath={active ? file?.path : undefined}
+                                  revealFocus={false}
+                                  onSelect={(path) =>
+                                    navigate(() => {
+                                      void openFile(path);
+                                    })
+                                  }
+                                />
+                              )}
                             </div>
                           </>
                         )}
@@ -1591,13 +1646,15 @@ export function App() {
                                               : tick
                                           }
                                           deferRefresh={
-                                            selection.source !== "commit" &&
-                                            stageOperations.some(
-                                              (operation) =>
-                                                operation.path === undefined ||
-                                                operation.path ===
-                                                  selection.path,
-                                            )
+                                            projectSettling ||
+                                            (selection.source !== "commit" &&
+                                              stageOperations.some(
+                                                (operation) =>
+                                                  operation.path ===
+                                                    undefined ||
+                                                  operation.path ===
+                                                    selection.path,
+                                              ))
                                           }
                                           split={split}
                                           onTiming={recordTiming}
@@ -1959,6 +2016,51 @@ export function App() {
               <dd>{p95?.toFixed(1) ?? "—"} ms</dd>
             </div>
             <div>
+              <dt>Last repository switch → paint opportunity</dt>
+              <dd>
+                {projectTimes.at(-1)?.paint?.toFixed(1) ?? "—"} ms{" "}
+                {projectTimes.at(-1)
+                  ? projectTimes.at(-1)!.cached
+                    ? "(cached)"
+                    : "(first open)"
+                  : ""}
+              </dd>
+            </div>
+            <div>
+              <dt>Last repository React commit</dt>
+              <dd>{projectTimes.at(-1)?.commit.toFixed(1) ?? "—"} ms</dd>
+            </div>
+            {[true, false].map((cached) => {
+              const samples = projectTimes
+                .filter((t) => t.cached === cached)
+                .flatMap((t) => (t.paint === null ? [] : [t.paint]))
+                .sort((a, b) => a - b);
+              return (
+                <div key={String(cached)}>
+                  <dt>
+                    {cached
+                      ? "Cached repository switches"
+                      : "First repository opens"}{" "}
+                    p95 · {samples.length} samples
+                  </dt>
+                  <dd>
+                    {samples.length
+                      ? samples[Math.ceil(samples.length * 0.95) - 1].toFixed(1)
+                      : "—"}{" "}
+                    ms
+                  </dd>
+                </div>
+              );
+            })}
+            {projectTimes.some((t) => t.paint === null) && (
+              <div>
+                <dt>
+                  Repository paint samples excluded (background/focus change)
+                </dt>
+                <dd>{projectTimes.filter((t) => t.paint === null).length}</dd>
+              </div>
+            )}
+            <div>
               <dt>Last tab switch → paint opportunity</dt>
               <dd>{tabTimes.at(-1)?.toFixed(1) ?? "—"} ms</dd>
             </div>
@@ -1997,6 +2099,7 @@ export function App() {
               setTimes([]);
               setTabTimes([]);
               setFileTimes([]);
+              setProjectTimes([]);
             }}
           >
             Reset samples

@@ -960,3 +960,45 @@ it("prompts for WIP before checkout and only stashes after explicit confirmation
     }),
   );
 });
+
+it("reveals cached repositories synchronously without another Git open and records warm switch timing", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+  localStorage.setItem(
+    "githeaven.projects",
+    JSON.stringify(["/sample", "/other"]),
+  );
+  await openWorkspace();
+  const opened: string[] = [];
+  vi.mocked(call).mockImplementation(async (command, args) => {
+    if (command === "open_repository") {
+      opened.push(args!.path as string);
+      return { ...restoredSnapshot, root: args!.path, name: "other" };
+    }
+    // Background Git can remain pending; tab interactions must not wait for it.
+    return new Promise(() => {});
+  });
+  fireEvent.click(screen.getByRole("tab", { name: "other" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("tab", { name: "other" }).getAttribute("aria-selected"),
+    ).toBe("true"),
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "sample" }));
+  expect(
+    screen.getByRole("tab", { name: "sample" }).getAttribute("aria-selected"),
+  ).toBe("true");
+  expect(
+    (screen.getByRole("tab", { name: "other" }) as HTMLButtonElement).disabled,
+  ).toBe(false);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Performance measurements" }),
+  );
+  await screen.findByText(/Cached repository switches p95 · 1 samples/);
+  fireEvent.click(screen.getByRole("tab", { name: "other" }));
+  expect(
+    screen.getByRole("tab", { name: "other" }).getAttribute("aria-selected"),
+  ).toBe("true");
+  await screen.findByText(/Cached repository switches p95 · 2 samples/);
+  expect(opened).toEqual(["/other"]);
+});
