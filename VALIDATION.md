@@ -188,3 +188,10 @@ Up/Down in the staged or unstaged file area now selects the adjacent file and op
 - Removed the previous 35 ms read delay. Refreshes retain the previous highlighted document while the next version is prepared; cancelled selections cannot publish late highlight results. Highlight failures preserve the previous diff and report the error.
 - The existing diff timing now includes highlight-cache preparation. The cache remains bounded by Pierre's existing 12-entry pool limit.
 - Validation: 60 frontend tests passed, including a controlled delayed-highlight regression that checks initial rendering waits for readiness, refresh preserves the DOM container, and revisions receive distinct cache keys. Existing scroll, stale-result, unchanged-content, staging, and error-recovery tests pass. Tauri release build passed.
+
+## GitHub commit avatars — 2026-09-06
+
+- Added local author email and Co-authored-by trailers to history records. Commit node hover text includes those details, date, short SHA, and GitHub login when matched.
+- The optional GitHub CLI lookup uses the exact GitHub origin and commit SHA with existing `gh` authentication, following [GitHub's commit author association](https://docs.github.com/en/rest/commits/commits#get-a-commit). It does not search names or submit author emails to an identity service. Requests time out after eight seconds and unavailable matches fall back to ordinary nodes.
+- Visible nodes defer lookup by 100 ms; frontend concurrency is two, the queue is capped at 64, and commit/author caches are bounded at 512 each. Successful author matches are reused; an unpublished commit does not poison another commit's lookup for that author. WIP retains its dotted circle. Avatar images are restricted to avatars.githubusercontent.com by CSP and use branch-colored rings.
+- Validation: 63 frontend tests and 11 Rust tests passed; release build passed. Tests cover author/co-author fields, exact GitHub origin parsing, avatar/image failure fallback, cached author reuse, and unpublished commit fallback. Verified a real GitHub association through gh and visually confirmed avatar circles in the native githeaven graph.

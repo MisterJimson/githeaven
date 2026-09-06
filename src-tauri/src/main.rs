@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod avatars;
 mod repository;
 use notify::{RecursiveMode, Watcher};
 use repository::*;
@@ -130,6 +131,18 @@ fn close_repository(root: String, state: State<'_, Session>) -> Result<(), Strin
         .map_err(|e| e.to_string())?
         .remove(&PathBuf::from(root));
     Ok(())
+}
+
+#[tauri::command]
+async fn commit_avatar(
+    root: String,
+    oid: String,
+    state: State<'_, Session>,
+) -> Result<Option<avatars::Avatar>, String> {
+    let root = state.checked(&root)?;
+    tauri::async_runtime::spawn_blocking(move || avatars::lookup(&root, &oid))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -304,6 +317,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_repository,
             close_repository,
+            commit_avatar,
             refresh_repository,
             commit_details,
             file_versions,

@@ -22,6 +22,8 @@ pub struct Commit {
     pub oid: String,
     pub parents: Vec<String>,
     pub author: String,
+    pub author_email: String,
+    pub coauthors: Vec<String>,
     pub timestamp: i64,
     pub subject: String,
 }
@@ -216,7 +218,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
             "--all",
             "--topo-order",
             "-z",
-            "--format=%H%x00%P%x00%an%x00%at%x00%s",
+            "--format=%H%x00%P%x00%an%x00%at%x00%s%x00%ae%x00%(trailers:key=Co-authored-by,valueonly,separator=%x1f)",
             "-n",
             &count,
         ];
@@ -225,14 +227,21 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
         }
         let raw = git_text(root, &args)?;
         let fields: Vec<_> = raw.split('\0').collect();
-        for f in fields.chunks(5) {
-            if f.len() < 5 || f[0].is_empty() {
+        for f in fields.chunks(7) {
+            if f.len() < 7 || f[0].is_empty() {
                 continue;
             }
             list.push(Commit {
                 oid: f[0].into(),
                 parents: f[1].split_whitespace().map(String::from).collect(),
                 author: f[2].into(),
+                author_email: f[5].into(),
+                coauthors: f[6]
+                    .split('\u{1f}')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect(),
                 timestamp: f[3].parse().unwrap_or(0),
                 subject: f[4].into(),
             });
@@ -590,6 +599,22 @@ mod tests {
         git(dir.path(), &["config", "user.name", "Test"]).unwrap();
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
+    }
+    #[test]
+    fn history_preserves_author_email_and_coauthors() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("file.txt"), "text").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Example\n\nCo-authored-by: Grace <grace@example.com>\nCo-authored-by: Ada <ada@example.com>"]).unwrap();
+        let snap = snapshot(r, 500, true).unwrap();
+        let commits = snap.commits.unwrap();
+        assert_eq!(commits[0].author_email, "test@example.com");
+        assert_eq!(
+            commits[0].coauthors,
+            vec!["Grace <grace@example.com>", "Ada <ada@example.com>"]
+        );
+        assert_eq!(commits[0].subject, "Example");
     }
     #[test]
     fn editor_baseline_uses_main_not_index_or_head() {

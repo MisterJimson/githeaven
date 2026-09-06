@@ -91,3 +91,7 @@ The macOS app is written to `src-tauri/target/release/bundle/macos/Githeaven.app
 ## Reused software
 
 Pierre [Diffs](https://github.com/pierrecomputer/pierre/tree/main/packages/diffs) and [Trees](https://github.com/pierrecomputer/pierre/tree/main/packages/trees) are Apache-2.0 licensed. Tauri, React, TanStack Virtual, notify, Shiki, Lucide, and DM Sans are also used. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md); dependency license and notice files remain the authoritative terms.
+
+### Commit avatars
+
+History resolves commit authors through the GitHub CLI (`gh`) using its existing sign-in and the repository's GitHub `origin`. Install/sign in to `gh` to enable matching, including private repositories. Avatar lookups run after graph rendering, with two requests at a time and bounded caches; browsing Git remains available without network access or `gh`. Unmatched authors and failed images retain the ordinary commit circle. Hover a node for local author/email, co-authors, commit date, short ID, and the matched GitHub username when available.

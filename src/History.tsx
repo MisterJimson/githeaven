@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
+import { CommitNode } from "./CommitNode";
 import { layoutGraph } from "./graph";
 import type { Commit, Reference } from "./types";
 const colors = [
@@ -12,6 +13,7 @@ const colors = [
   "#b4c77b",
 ];
 export const History = memo(function History({
+  root,
   commits,
   refs,
   selected,
@@ -27,6 +29,7 @@ export const History = memo(function History({
   hasMore = false,
   onLoadMore,
 }: {
+  root?: string;
   commits: Commit[];
   refs: Reference[];
   selected?: string;
@@ -220,7 +223,7 @@ export const History = memo(function History({
                 <svg
                   width={graphWidth}
                   height="37"
-                  aria-hidden="true"
+                  aria-label={isWorking ? "Working changes" : undefined}
                   className="graph-svg"
                 >
                   {commitRefs.length > 0 && (
@@ -260,19 +263,24 @@ export const History = memo(function History({
                       }
                     />
                   ))}
-                  <circle
-                    cx={22 + row.lane * 16}
-                    cy="18.5"
-                    r={isWorking ? 5 : commit.parents.length > 1 ? 4.5 : 3.5}
-                    fill={
-                      isWorking || commit.parents.length > 1
-                        ? "#161a1d"
-                        : colors[row.color]
-                    }
-                    stroke={colors[row.color]}
-                    strokeWidth="2"
-                    strokeDasharray={isWorking ? "2 2" : undefined}
-                  />
+                  {isWorking ? (
+                    <circle
+                      cx={22 + row.lane * 16}
+                      cy={18.5}
+                      r={5}
+                      fill="#161a1d"
+                      stroke={rowColor}
+                      strokeWidth={2}
+                      strokeDasharray="2 2"
+                    />
+                  ) : (
+                    <CommitNode
+                      root={root}
+                      commit={commit}
+                      x={22 + row.lane * 16}
+                      color={rowColor}
+                    />
+                  )}
                 </svg>
                 <span className="commit-subject">
                   {isWorking && <span className="wip-badge">// WIP</span>}

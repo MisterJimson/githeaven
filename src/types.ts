@@ -2,6 +2,8 @@ export interface Commit {
   oid: string;
   parents: string[];
   author: string;
+  author_email?: string;
+  coauthors?: string[];
   timestamp: number;
   subject: string;
 }

@@ -1391,6 +1391,7 @@ export function App() {
                               </div>
                             )}
                             <History
+                              root={repo.root}
                               active={active && !diffOpen}
                               hasMore={repo.has_more}
                               onLoadMore={loadOlder}
