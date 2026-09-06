@@ -93,7 +93,7 @@ export function CommitNode({
       <circle
         cx={x}
         cy={18.5}
-        r={show ? 9 : commit.parents.length > 1 ? 4.5 : 3.5}
+        r={9}
         fill={commit.parents.length > 1 ? "#161a1d" : color}
         stroke={color}
         strokeWidth={2}

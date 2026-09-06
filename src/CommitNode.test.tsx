@@ -39,12 +39,15 @@ it("replaces the circle with an avatar, shares successful author matches and fal
       <CommitNode root="/avatar-test" commit={commit} x={22} color="blue" />
     </svg>,
   );
+  expect(container.querySelector("circle")?.getAttribute("r")).toBe("9");
   await waitFor(() => expect(container.querySelector("image")).not.toBeNull());
+  expect(container.querySelector("circle")?.getAttribute("r")).toBe("9");
   expect(screen.getByRole("img").getAttribute("aria-label")).toContain(
     "(@ada)",
   );
   fireEvent.error(container.querySelector("image")!);
   expect(container.querySelector("image")).toBeNull();
+  expect(container.querySelector("circle")?.getAttribute("r")).toBe("9");
   rerender(
     <svg>
       <CommitNode
