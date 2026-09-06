@@ -517,7 +517,7 @@ export function App() {
 
   async function chooseRepository() {
     if (!native) {
-      setError("Use the desktop app: npm run tauri dev");
+      setError("Use the desktop app: pnpm tauri dev");
       return;
     }
     const path = await open({
@@ -1943,8 +1943,8 @@ export function App() {
             </div>
             {!native && (
               <div className="browser-note">
-                Browser preview · launch <code>npm run tauri dev</code> for
-                local Git access.
+                Browser preview · launch <code>pnpm tauri dev</code> for local
+                Git access.
               </div>
             )}
           </div>

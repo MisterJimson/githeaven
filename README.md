@@ -4,11 +4,11 @@ A local Git workspace prototype: **Tauri 2 + Rust + React**, with **Pierre Trees
 
 ## Run
 
-Requirements: Node.js 22.12+ (or a supported newer Node release), Rust, Git, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+Requirements: Node.js 22.13+ (or a supported newer Node release), pnpm 12 (pinned in `packageManager`), Rust, Git, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
-npm ci
-npm run tauri dev
+pnpm install --frozen-lockfile
+pnpm tauri dev
 ```
 
 Choose a local Git repository once; the app automatically reopens the last successfully opened folder on subsequent launches. If that folder is unavailable, it returns to folder selection. Opening and browsing a repository does not check out branches or change its files. Remote branches are the locally fetched remote-tracking refs; the prototype does not fetch from a server.
@@ -16,14 +16,14 @@ Choose a local Git repository once; the app automatically reopens the last succe
 For a disposable example with branches, merges, tags, a staged file, and working changes:
 
 ```sh
-npm run demo
+pnpm demo
 ```
 
 Open the `.demo` directory printed by that command. The script leaves an existing demo untouched. It does not contact a remote. All Git identity configuration is confined to that sample repository.
 
-`npm run stress` creates a separate `.stress` repository with 6,000 commits and 10,001 files for exercising pagination, tree search, and rendering. It also leaves any existing fixture untouched. These are synthetic workloads, not representative performance claims.
+`pnpm stress` creates a separate `.stress` repository with 6,000 commits and 10,001 files for exercising pagination, tree search, and rendering. It also leaves any existing fixture untouched. These are synthetic workloads, not representative performance claims.
 
-`npm run dev` alone opens the browser preview. Filesystem/Git access requires the Tauri desktop app; the browser preview intentionally does not expose a local HTTP API.
+`pnpm dev` alone opens the browser preview. Filesystem/Git access requires the Tauri desktop app; the browser preview intentionally does not expose a local HTTP API.
 
 ## Included
 
@@ -71,10 +71,10 @@ Measure the release build for meaningful comparisons. Include the app and its We
 ## Validate and package
 
 ```sh
-npm test
-npm run build
+pnpm test
+pnpm build
 cargo test --manifest-path src-tauri/Cargo.toml
-npm run tauri build -- --bundles app  # macOS .app
+pnpm tauri build --bundles app  # macOS .app
 ```
 
 The macOS app is written to `src-tauri/target/release/bundle/macos/Githeaven.app`. It is a local build, not a notarized release. Use Tauri's platform-appropriate bundle target on Windows/Linux.
@@ -95,3 +95,7 @@ Pierre [Diffs](https://github.com/pierrecomputer/pierre/tree/main/packages/diffs
 ### Commit avatars
 
 History resolves commit authors through the GitHub CLI (`gh`) using its existing sign-in and the repository's GitHub `origin`. Install/sign in to `gh` to enable matching, including private repositories. Avatar lookups run after graph rendering, with two requests at a time and bounded caches; browsing Git remains available without network access or `gh`. Unmatched authors and failed images retain the ordinary commit circle. Hover a node for local author/email, co-authors, commit date, short ID, and the matched GitHub username when available.
+
+### Code quality
+
+Use `pnpm lint` for oxlint, `pnpm format` to apply oxfmt, and `pnpm format:check` to check formatting. `pnpm check` runs lint, formatting checks, frontend tests/build, and Rust tests. Commit `pnpm-lock.yaml`; install reproducibly with `pnpm install --frozen-lockfile`. Rust formatting remains `cargo fmt --manifest-path src-tauri/Cargo.toml`.

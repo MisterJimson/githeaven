@@ -6,7 +6,7 @@ export async function call<T>(
 ): Promise<T> {
   if (!native)
     throw new Error(
-      "Open the desktop app with npm run tauri dev to access local repositories.",
+      "Open the desktop app with pnpm tauri dev to access local repositories.",
     );
   return invoke<T>(command, args);
 }

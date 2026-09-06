@@ -59,12 +59,10 @@ it("replaces the circle with an avatar, shares successful author matches and fal
   expect(call).toHaveBeenCalledTimes(1);
 });
 it("does not let an unpublished commit prevent another commit matching the same author", async () => {
-  vi.mocked(call)
-    .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce({
-      login: "ada",
-      url: "https://avatars.githubusercontent.com/u/1",
-    });
+  vi.mocked(call).mockResolvedValueOnce(null).mockResolvedValueOnce({
+    login: "ada",
+    url: "https://avatars.githubusercontent.com/u/1",
+  });
   const { container, rerender } = render(
     <svg>
       <CommitNode

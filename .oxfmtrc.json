@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "ignorePatterns": [
+    "pnpm-lock.yaml",
+    "licenses/**",
+    "src-tauri/gen/**",
+    "src-tauri/target/**",
+    "dist/**",
+    ".demo/**",
+    ".stress/**"
+  ]
+}

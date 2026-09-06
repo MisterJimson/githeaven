@@ -210,3 +210,10 @@ Up/Down in the staged or unstaged file area now selects the adjacent file and op
 - File selection no longer remounts the diff surface. It keeps the displayed document and scroll position until the requested comparison finishes preparing, then installs the replacement and resets its scroll to the top. Same-file refreshes continue preserving scrolling.
 - Comparison identity is checked alongside contents so distinct files with identical content still replace each other. Failed loads retain the prior diff with the existing error notice; stale requests cannot replace a newer selection. Repository changes still isolate the viewer.
 - Validation: 67 frontend tests passed, covering retained DOM/content during delayed file selection, scroll reset only at replacement, identical-content file navigation, and existing stale-result/highlighting behavior.
+
+## pnpm 12 and Oxc tooling — 2026-09-06
+
+- Pinned `pnpm@12.3.4` in packageManager, added Node/pnpm engine requirements, imported the npm dependency lock into pnpm-lock.yaml, and removed package-lock.json and the Prettier dependency.
+- Added oxlint 1.81.0 and oxfmt 0.66.0 with committed configuration and lint/format/format:check scripts. Applied the formatter baseline and rewrote one side-effect ternary as an if/else to satisfy the linter without changing behavior.
+- Tauri hooks, runtime development hints, README commands, and AGENTS.md now use pnpm. pnpm-workspace.yaml allows only esbuild's required dependency build script.
+- Validation: `pnpm install --frozen-lockfile` and `pnpm check` passed, including lint with warnings denied, formatting checks, 67 frontend tests, frontend build, and 11 Rust tests. The imported graph retains the existing Pierre theming peer-version warning; no unrelated dependency upgrades were introduced to address it.

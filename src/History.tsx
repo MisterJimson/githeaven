@@ -157,7 +157,8 @@ export const History = memo(function History({
                     (event.key === "Enter" || event.key === " ")
                   ) {
                     event.preventDefault();
-                    isWorking ? onSelectWorking() : onSelect(commit);
+                    if (isWorking) onSelectWorking();
+                    else onSelect(commit);
                   }
                 }}
                 key={commit.oid}
