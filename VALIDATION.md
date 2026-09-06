@@ -166,3 +166,9 @@ Up/Down in the staged or unstaged file area now selects the adjacent file and op
 - Green marks additions, blue marks replacements, and red triangles anchor deletions. Repository refreshes reread the main baseline; obsolete worker results are ignored.
 - Validation: 56 frontend tests, 8 Rust tests, TypeScript check, and Tauri release app build passed. Coverage includes insertion/replacement/deletion positions, absent paths, main versus feature/working contents, stale results, and stable gutter DOM.
 - Native app: verified green markers on a new file and a blue marker after an unsaved first-line edit to README.md. Undid the temporary edit and confirmed “Saved to disk”; no test edit saved.
+
+## Reveal Edit file selection — 2026-09-06
+
+- The Edit explorer now synchronizes Pierre's actual selection with the open file, including navigation from the diff arrow and quick open.
+- Opening a file or returning to Edit expands its parent folders and reveals its row without stealing editor focus or triggering a second file read.
+- Frontend regression coverage verifies changing the selected file, ancestor expansion, nearest scrolling without focus, and suppression of recursive selection callbacks.

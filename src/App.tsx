@@ -1304,6 +1304,9 @@ export function App() {
                                 paths={repo.files}
                                 changes={changes}
                                 selected={file?.path}
+                                syncSelection
+                                revealPath={active ? file?.path : undefined}
+                                revealFocus={false}
                                 onSelect={(path) =>
                                   navigate(() => {
                                     void openFile(path);

@@ -15,6 +15,7 @@ export function PierreTree({
   query,
   syncSelection = false,
   revealPath,
+  revealFocus = true,
 }: {
   paths: string[];
   changes?: Change[];
@@ -25,6 +26,7 @@ export function PierreTree({
   query?: string;
   syncSelection?: boolean;
   revealPath?: string;
+  revealFocus?: boolean;
 }) {
   const synchronizing = useRef(false);
   const callback = useRef(onSelect);
@@ -54,8 +56,8 @@ export function PierreTree({
       const item = model.getItem(parts.slice(0, i).join("/"));
       if (item && "expand" in item) item.expand();
     }
-    model.scrollToPath(revealPath, { focus: true, offset: "nearest" });
-  }, [model, revealPath]);
+    model.scrollToPath(revealPath, { focus: revealFocus, offset: "nearest" });
+  }, [model, revealPath, revealFocus]);
   const previousPaths = useRef(paths);
   useEffect(() => {
     // Construction already loaded these paths. Refreshes often return the same list.
@@ -104,7 +106,7 @@ export function PierreTree({
     }));
     model.setGitStatus(statuses);
   }, [model, changes]);
-  // Explorer selection stays with Pierre; change lists may synchronize it silently.
+  // External navigation synchronizes selection without reopening the file.
   return useMemo(
     () => (
       <FileTree
