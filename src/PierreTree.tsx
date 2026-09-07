@@ -16,6 +16,7 @@ export function PierreTree({
   syncSelection = false,
   revealPath,
   revealFocus = true,
+  openOnArrow = false,
 }: {
   paths: string[];
   changes?: Change[];
@@ -27,6 +28,7 @@ export function PierreTree({
   syncSelection?: boolean;
   revealPath?: string;
   revealFocus?: boolean;
+  openOnArrow?: boolean;
 }) {
   const synchronizing = useRef(false);
   const callback = useRef(onSelect);
@@ -109,13 +111,53 @@ export function PierreTree({
   // External navigation synchronizes selection without reopening the file.
   return useMemo(
     () => (
-      <FileTree
-        model={model}
-        className="pierre-tree"
-        style={{ height: "100%", colorScheme: "dark" }}
-        data-current-path={selected}
-      />
+      <div
+        style={{ height: "100%" }}
+        onKeyDownCapture={(event) => {
+          if (
+            !openOnArrow ||
+            !["ArrowUp", "ArrowDown"].includes(event.key) ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.altKey ||
+            event.shiftKey
+          )
+            return;
+          const target = event.nativeEvent.composedPath()[0];
+          if (
+            target instanceof HTMLElement &&
+            (target.matches("input, textarea") || target.isContentEditable)
+          )
+            return;
+          // Pierre moves keyboard focus inside its shadow root before this runs.
+          queueMicrotask(() => {
+            const path = model.getFocusedPath();
+            if (
+              !path ||
+              !allowed.current.has(path) ||
+              model.getSelectedPaths().includes(path)
+            )
+              return;
+            synchronizing.current = true;
+            try {
+              for (const selected of model.getSelectedPaths())
+                model.getItem(selected)?.deselect();
+              model.getItem(path)?.select();
+            } finally {
+              synchronizing.current = false;
+            }
+            callback.current(path);
+          });
+        }}
+      >
+        <FileTree
+          model={model}
+          className="pierre-tree"
+          style={{ height: "100%", colorScheme: "dark" }}
+          data-current-path={selected}
+        />
+      </div>
     ),
-    [model, selected],
+    [model, selected, openOnArrow],
   );
 }

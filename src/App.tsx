@@ -1939,6 +1939,7 @@ export function App() {
                               <PierreTree
                                 key={`${repo.root}:${selected?.oid}:${parent}`}
                                 paths={details.paths}
+                                openOnArrow
                                 selectionActive={
                                   diffOpen && reviewKind === "commit"
                                 }
