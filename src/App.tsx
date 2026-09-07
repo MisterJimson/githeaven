@@ -1400,9 +1400,6 @@ export function App() {
                           />
                         ) : (
                           <>
-                            <div className="section-label">
-                              EXPLORER<span>{repo.files.length} files</span>
-                            </div>
                             <div className="tree-wrap">
                               {(active || file) && (
                                 <PierreTree
