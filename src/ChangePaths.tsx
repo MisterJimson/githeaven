@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FilePlus2, FileMinus2, Pencil, MoveRight } from "lucide-react";
+import {
+  FilePlus2,
+  FileMinus2,
+  Pencil,
+  MoveRight,
+  FileCode2,
+} from "lucide-react";
 import type { Change } from "./types";
 
 export function ChangePaths({
   paths,
   changes,
   staged,
+  label,
   selected,
   onSelect,
   revealPath,
@@ -14,6 +21,7 @@ export function ChangePaths({
   paths: string[];
   changes: Change[];
   staged: boolean;
+  label?: string;
   selected?: string;
   revealPath?: string;
   onSelect: (path: string) => void;
@@ -46,7 +54,7 @@ export function ChangePaths({
     <div
       ref={scroll}
       className="change-path-list"
-      aria-label={`${staged ? "Staged" : "Unstaged"} file paths`}
+      aria-label={`${label ?? (staged ? "Staged" : "Unstaged")} file paths`}
     >
       <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
         {virtual.getVirtualItems().map((item) => {
@@ -59,7 +67,9 @@ export function ChangePaths({
                 ? FileMinus2
                 : status === "R"
                   ? MoveRight
-                  : Pencil;
+                  : status
+                    ? Pencil
+                    : FileCode2;
           return (
             <button
               key={path}

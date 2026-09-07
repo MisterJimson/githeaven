@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ChangeSections } from "./ChangeSections";
+import { ChangeSections, ChangeFiles } from "./ChangeSections";
 import { useState } from "react";
 import type { Selection } from "./types";
 import type { Change } from "./types";
@@ -192,4 +192,31 @@ it("keyboard navigation respects the current search results", () => {
     key: "ArrowDown",
   });
   expect(onSelect).toHaveBeenLastCalledWith("src/file-19.ts", false);
+});
+
+it("preserves commit file selection across layouts and opens files with arrows", () => {
+  const onSelect = vi.fn();
+  const props = {
+    paths: ["a.ts", "b.ts"],
+    changes: [],
+    staged: false,
+    label: "Commit",
+    selected: "a.ts",
+    onSelect,
+  };
+  const { rerender } = render(<ChangeFiles {...props} view="path" />);
+  expect(
+    screen.getByRole("button", { name: "a.ts" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.keyDown(screen.getByLabelText("Commit file navigation"), {
+    key: "ArrowDown",
+  });
+  expect(onSelect).toHaveBeenLastCalledWith("b.ts");
+  rerender(<ChangeFiles {...props} selected="b.ts" view="tree" />);
+  expect(screen.getByRole("button", { name: "b.ts" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByLabelText("Commit file navigation"), {
+    key: "ArrowUp",
+  });
+  expect(onSelect).toHaveBeenLastCalledWith("a.ts");
+  expect(screen.queryByRole("searchbox")).toBeNull();
 });

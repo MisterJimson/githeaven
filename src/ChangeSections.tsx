@@ -125,10 +125,11 @@ export function ChangeSections({
   );
 }
 
-function ChangeFiles({
+export function ChangeFiles({
   paths,
   changes,
   staged,
+  label,
   view,
   selected,
   onSelect,
@@ -136,6 +137,7 @@ function ChangeFiles({
   paths: string[];
   changes: Change[];
   staged: boolean;
+  label?: string;
   view: "path" | "tree";
   selected?: string;
   onSelect: (path: string) => void;
@@ -162,7 +164,7 @@ function ChangeFiles({
         <input
           type="search"
           className="change-files-search"
-          aria-label={`Search ${staged ? "staged" : "unstaged"} files`}
+          aria-label={`Search ${label ?? (staged ? "staged" : "unstaged")} files`}
           placeholder="Search files…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -171,7 +173,7 @@ function ChangeFiles({
       <div
         className="change-file-views"
         tabIndex={0}
-        aria-label={`${staged ? "Staged" : "Unstaged"} file navigation`}
+        aria-label={`${label ?? (staged ? "Staged" : "Unstaged")} file navigation`}
         onPointerDownCapture={() => setKeyboardPath(undefined)}
         onKeyDownCapture={(event) => {
           if (
@@ -219,6 +221,7 @@ function ChangeFiles({
             paths={filtered}
             changes={changes}
             staged={staged}
+            label={label}
             selected={selected}
             onSelect={onSelect}
           />

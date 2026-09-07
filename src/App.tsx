@@ -23,6 +23,8 @@ import {
   GitCompareArrows,
   GitFork,
   LoaderCircle,
+  List,
+  ListTree,
   Minus,
   Plus,
   Save,
@@ -31,7 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { call, errorText, native } from "./api";
-import { ChangeSections } from "./ChangeSections";
+import { ChangeSections, ChangeFiles } from "./ChangeSections";
 import { QuickOpen, type QuickItem } from "./QuickOpen";
 import { ResizablePanel } from "./ResizablePanel";
 import { BranchSidebar } from "./BranchSidebar";
@@ -134,6 +136,11 @@ export function App() {
   const [stageOperations, setStageOperations] = useState<QueuedStage[]>([]);
   const [indexPending, setIndexPending] = useState(false);
   const [reviewKind, setReviewKind] = useState<"working" | "commit">("working");
+  const [commitFilesView, setCommitFilesView] = useState<"path" | "tree">(() =>
+    localStorage.getItem("githeaven.commit-files-view") === "tree"
+      ? "tree"
+      : "path",
+  );
   const [diffOpen, setDiffOpen] = useState(false);
   const [inlineEdit, setInlineEdit] = useState<string | null>(null);
   useEffect(
@@ -1935,13 +1942,44 @@ export function App() {
                             <div className="section-label">
                               CHANGED FILES<span>{details.paths.length}</span>
                             </div>
+                            <div
+                              className="changes-view-toggle"
+                              role="group"
+                              aria-label="Commit files view"
+                            >
+                              {(["path", "tree"] as const).map((view) => (
+                                <button
+                                  key={view}
+                                  aria-pressed={commitFilesView === view}
+                                  onClick={() => {
+                                    setCommitFilesView(view);
+                                    localStorage.setItem(
+                                      "githeaven.commit-files-view",
+                                      view,
+                                    );
+                                  }}
+                                >
+                                  {view === "path" ? (
+                                    <List size={13} />
+                                  ) : (
+                                    <ListTree size={13} />
+                                  )}
+                                  {view === "path" ? "Path" : "Tree"}
+                                </button>
+                              ))}
+                            </div>
                             <div className="tree-wrap">
-                              <PierreTree
+                              <ChangeFiles
                                 key={`${repo.root}:${selected?.oid}:${parent}`}
                                 paths={details.paths}
-                                openOnArrow
-                                selectionActive={
+                                changes={[]}
+                                staged={false}
+                                label="Commit"
+                                view={commitFilesView}
+                                selected={
                                   diffOpen && reviewKind === "commit"
+                                    ? historySelection?.path
+                                    : undefined
                                 }
                                 onSelect={(path) =>
                                   navigate(() => {
