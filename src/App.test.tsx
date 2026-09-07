@@ -1028,3 +1028,58 @@ it("shows the number of uncommitted files in the Git tab, including staged files
   refreshWorkspace();
   await screen.findByRole("button", { name: "Git (0)" });
 });
+
+it("quick edits in Git and transfers an unsaved draft to the full editor", async () => {
+  await openWorkspace({ changes: [modifiedChange] });
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Quick edit working file" }),
+  );
+  const editor = await screen.findByRole("textbox", { name: "Test editor" });
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+  fireEvent.change(editor, { target: { value: "quick draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Back to graph" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit working file" }));
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Test editor",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("quick draft"),
+  );
+  expect(screen.queryByRole("button", { name: "Back to graph" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() =>
+    expect(call).toHaveBeenCalledWith(
+      "save_file",
+      expect.objectContaining({ path: "changed.txt", contents: "quick draft" }),
+    ),
+  );
+});
+
+it("saves quick edits without leaving Git and returns to the diff", async () => {
+  await openWorkspace({ changes: [modifiedChange] });
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Quick edit working file" }),
+  );
+  fireEvent.change(
+    await screen.findByRole("textbox", { name: "Test editor" }),
+    { target: { value: "inline save" } },
+  );
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await waitFor(() =>
+    expect(call).toHaveBeenCalledWith(
+      "save_file",
+      expect.objectContaining({ contents: "inline save" }),
+    ),
+  );
+  await screen.findByText("File saved");
+  fireEvent.click(screen.getByRole("button", { name: "Return to diff" }));
+  expect(screen.getByTestId("diff-worktree")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+});

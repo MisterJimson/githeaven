@@ -135,6 +135,17 @@ export function App() {
   const [indexPending, setIndexPending] = useState(false);
   const [reviewKind, setReviewKind] = useState<"working" | "commit">("working");
   const [diffOpen, setDiffOpen] = useState(false);
+  const [inlineEdit, setInlineEdit] = useState<string | null>(null);
+  useEffect(
+    () => setInlineEdit(null),
+    [
+      repo?.root,
+      changeSelection?.path,
+      historySelection?.path,
+      reviewKind,
+      diffOpen,
+    ],
+  );
   const selection =
     reviewKind === "commit" ? historySelection : changeSelection;
   const [tabTimes, setTabTimes] = useState<number[]>([]);
@@ -527,7 +538,7 @@ export function App() {
     });
     if (path) await openRepository(path);
   }
-  async function openFile(path: string) {
+  async function openFile(path: string, inPlace = false) {
     const root = repoRef.current?.root;
     if (!root) return;
     const request = ++fileRequest.current;
@@ -551,7 +562,11 @@ export function App() {
         finishOpen,
         readMs: performance.now() - started,
       });
-      setMode("files");
+      if (inPlace) setInlineEdit(path);
+      else {
+        setInlineEdit(null);
+        setMode("files");
+      }
     } catch (e) {
       if (request === fileRequest.current && gen === generation.current)
         report(e);
@@ -773,6 +788,18 @@ export function App() {
         commit: null as number | null,
       };
       tabStarted.current = measurement;
+      if (inlineEdit && next === "files") {
+        setFile((current) =>
+          current
+            ? {
+                ...current,
+                contents: draft.current,
+                version: ++fileVersion.current,
+              }
+            : current,
+        );
+        setInlineEdit(null);
+      }
       setMode(next);
       // Two frames include a paint opportunity after React reveals the retained pane.
       requestAnimationFrame(() =>
@@ -1422,7 +1449,9 @@ export function App() {
                               }
                               onSelectRef={setActiveRef}
                               onCheckoutRef={checkoutBranch}
-                              onSelect={selectCommit}
+                              onSelect={(commit) =>
+                                navigate(() => selectCommit(commit))
+                              }
                               head={repo.head}
                               branch={repo.branch}
                               workingCount={changes.length}
@@ -1451,6 +1480,12 @@ export function App() {
                             kind === "commit"
                               ? historySelection
                               : changeSelection;
+                          const editingHere =
+                            kind !== "editor" &&
+                            inlineEdit === selection?.path &&
+                            reviewKind === kind &&
+                            diffOpen;
+                          const editing = mode === "files" || editingHere;
                           const visible =
                             kind === "editor" ||
                             (diffOpen && reviewKind === kind);
@@ -1467,7 +1502,9 @@ export function App() {
                                   {mode !== "files" && (
                                     <button
                                       className="text-button back-to-graph"
-                                      onClick={() => setDiffOpen(false)}
+                                      onClick={() =>
+                                        navigate(() => setDiffOpen(false))
+                                      }
                                       aria-label="Back to graph"
                                     >
                                       <GitFork size={14} /> Graph
@@ -1486,7 +1523,7 @@ export function App() {
                                       ? (file?.path ?? "Editor")
                                       : (selection?.path ?? "Select a file")}
                                   </span>
-                                  {mode === "files" && dirty && (
+                                  {editing && dirty && (
                                     <span className="dirty-dot" />
                                   )}
                                   <div className="toolbar-spacer" />
@@ -1512,17 +1549,62 @@ export function App() {
                                         </button>
                                       </div>
                                       {selection && (
+                                        <div className="segmented">
+                                          <button
+                                            aria-label={
+                                              editingHere
+                                                ? "Return to diff"
+                                                : "Quick edit working file"
+                                            }
+                                            className={
+                                              editingHere ? "active" : ""
+                                            }
+                                            onClick={() =>
+                                              navigate(() => {
+                                                if (editingHere)
+                                                  setInlineEdit(null);
+                                                else
+                                                  void openFile(
+                                                    selection.path,
+                                                    true,
+                                                  );
+                                              })
+                                            }
+                                          >
+                                            {editingHere ? "Diff" : "Edit"}
+                                          </button>
+                                          <button
+                                            title="Open in Edit view"
+                                            aria-label="Edit working file"
+                                            onClick={() => {
+                                              if (editingHere && file) {
+                                                setFile({
+                                                  ...file,
+                                                  contents: draft.current,
+                                                  version:
+                                                    ++fileVersion.current,
+                                                });
+                                                setInlineEdit(null);
+                                                setMode("files");
+                                              } else
+                                                navigate(() => {
+                                                  void openFile(selection.path);
+                                                });
+                                            }}
+                                          >
+                                            <ArrowUpRight size={15} />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {editingHere && (
                                         <button
-                                          className="icon-button"
-                                          title="Edit working file"
-                                          aria-label="Edit working file"
-                                          onClick={() =>
-                                            navigate(() => {
-                                              void openFile(selection.path);
-                                            })
-                                          }
+                                          className="small-button"
+                                          disabled={!dirty || !!busy}
+                                          onClick={() => {
+                                            void save();
+                                          }}
                                         >
-                                          <ArrowUpRight size={15} />
+                                          <Save size={13} /> Save <kbd>⌘S</kbd>
                                         </button>
                                       )}
                                       {mode === "changes" && selection && (
@@ -1566,7 +1648,7 @@ export function App() {
                                     </>
                                   )}
                                 </div>
-                                {mode !== "files" && selection && (
+                                {!editing && selection && (
                                   <div className="comparison-labels">
                                     <span>
                                       {selection.source === "commit"
@@ -1585,7 +1667,7 @@ export function App() {
                                     </span>
                                   </div>
                                 )}
-                                {external && mode === "files" && (
+                                {external && editing && (
                                   <div className="external-warning">
                                     File changed on disk. Your draft is
                                     preserved.
@@ -1593,7 +1675,7 @@ export function App() {
                                       onClick={() =>
                                         file &&
                                         navigate(() => {
-                                          void openFile(file.path);
+                                          void openFile(file.path, editingHere);
                                         })
                                       }
                                     >
@@ -1603,8 +1685,8 @@ export function App() {
                                 )}
                                 <div
                                   className="surface-container"
-                                  aria-busy={mode === "files" && loadingFile}
-                                  inert={mode === "files" && loadingFile}
+                                  aria-busy={editing && loadingFile}
+                                  inert={editing && loadingFile}
                                 >
                                   <Suspense
                                     fallback={
@@ -1615,7 +1697,7 @@ export function App() {
                                     }
                                   >
                                     <>
-                                      {mode === "files" ? (
+                                      {editing ? (
                                         <>
                                           <div
                                             className="editor-slot"
@@ -1731,7 +1813,9 @@ export function App() {
                             <ChangeSections
                               changes={changes}
                               selected={changeSelection}
-                              onSelect={chooseChange}
+                              onSelect={(path, staged) =>
+                                navigate(() => chooseChange(path, staged))
+                              }
                               onStageAll={stageAllChanges}
                               busy={!!busy || dirty}
                               selectionActive={
@@ -1858,17 +1942,19 @@ export function App() {
                                 selectionActive={
                                   diffOpen && reviewKind === "commit"
                                 }
-                                onSelect={(path) => {
-                                  if (selected) {
-                                    setHistorySelection({
-                                      source: "commit",
-                                      path,
-                                      oid: selected.oid,
-                                      parent: details.parent,
-                                    });
-                                    setDiffOpen(true);
-                                  }
-                                }}
+                                onSelect={(path) =>
+                                  navigate(() => {
+                                    if (selected) {
+                                      setHistorySelection({
+                                        source: "commit",
+                                        path,
+                                        oid: selected.oid,
+                                        parent: details.parent,
+                                      });
+                                      setDiffOpen(true);
+                                    }
+                                  })
+                                }
                               />
                             </div>
                           </div>
