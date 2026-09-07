@@ -1038,7 +1038,7 @@ it("quick edits in Git and transfers an unsaved draft to the full editor", async
   const editor = await screen.findByRole("textbox", { name: "Test editor" });
   expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
   fireEvent.change(editor, { target: { value: "quick draft" } });
-  fireEvent.click(screen.getByRole("button", { name: "Back to graph" }));
+  fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.getByRole("dialog")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit working file" }));
@@ -1081,5 +1081,17 @@ it("saves quick edits without leaving Git and returns to the diff", async () => 
   await screen.findByText("File saved");
   fireEvent.click(screen.getByRole("button", { name: "Return to diff" }));
   expect(screen.getByTestId("diff-worktree")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+});
+
+it("Escape returns from a working diff to the graph and clears file selection", async () => {
+  await openWorkspace({ changes: [modifiedChange] });
+  const button = await screen.findByRole("button", { name: /changed.txt/ });
+  fireEvent.click(button);
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("button", { name: "Back to graph" })).toBeNull();
+  expect(button.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(button);
   expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
 });

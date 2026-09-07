@@ -742,6 +742,47 @@ export function App() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [pending, checkoutPrompt]);
   useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        mode !== "history" ||
+        !diffOpen ||
+        busy ||
+        pending ||
+        checkoutPrompt ||
+        quickOpen ||
+        showPerf
+      )
+        return;
+      event.preventDefault();
+      const close = () => {
+        setDiffOpen(false);
+        setInlineEdit(null);
+        if (reviewKind === "commit") setHistorySelection(null);
+        else setChangeSelection(null);
+      };
+      if (dirtyRef.current) setPending(() => close);
+      else close();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [
+    mode,
+    diffOpen,
+    busy,
+    pending,
+    checkoutPrompt,
+    quickOpen,
+    showPerf,
+    reviewKind,
+  ]);
+  useEffect(() => {
     if (notice) {
       const id = setTimeout(() => setNotice(""), 3500);
       return () => clearTimeout(id);
