@@ -1,4 +1,7 @@
 import type { Commit } from "./types";
+export const GRAPH_ROW_HEIGHT = 28;
+export const GRAPH_ROW_CENTER = GRAPH_ROW_HEIGHT / 2;
+
 export interface Edge {
   from: number;
   to: number;

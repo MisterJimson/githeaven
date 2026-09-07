@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GRAPH_ROW_CENTER } from "./graph";
 import { call } from "./api";
 import type { Commit } from "./types";
 type Avatar = { login: string; url: string };
@@ -92,7 +93,7 @@ export function CommitNode({
       <title>{title}</title>
       <circle
         cx={x}
-        cy={18.5}
+        cy={GRAPH_ROW_CENTER}
         r={9}
         fill={commit.parents.length > 1 ? "#161a1d" : color}
         stroke={color}
@@ -102,14 +103,20 @@ export function CommitNode({
         <image
           href={avatar.url}
           x={x - 8}
-          y={10.5}
+          y={GRAPH_ROW_CENTER - 8}
           width={16}
           height={16}
           style={{ clipPath: "circle(50%)" }}
           onError={() => setFailed(true)}
         />
       )}
-      <circle cx={x} cy={18.5} r={11} fill="transparent" stroke="none" />
+      <circle
+        cx={x}
+        cy={GRAPH_ROW_CENTER}
+        r={11}
+        fill="transparent"
+        stroke="none"
+      />
     </g>
   );
 }

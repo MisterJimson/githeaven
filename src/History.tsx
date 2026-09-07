@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
 import { CommitNode } from "./CommitNode";
-import { layoutGraph } from "./graph";
+import { layoutGraph, GRAPH_ROW_HEIGHT, GRAPH_ROW_CENTER } from "./graph";
 import type { Commit, Reference } from "./types";
 const colors = [
   "#8dd9bb",
@@ -88,7 +88,7 @@ export const History = memo(function History({
     count: entries.length,
     getItemKey: (index) => entries[index].oid,
     getScrollElement: () => scroll.current,
-    estimateSize: () => 37,
+    estimateSize: () => GRAPH_ROW_HEIGHT,
     overscan: 10,
     initialRect: { width: 800, height: 600 },
   });
@@ -223,13 +223,13 @@ export const History = memo(function History({
                 </span>
                 <svg
                   width={graphWidth}
-                  height="37"
+                  height={GRAPH_ROW_HEIGHT}
                   aria-label={isWorking ? "Working changes" : undefined}
                   className="graph-svg"
                 >
                   {commitRefs.length > 0 && (
                     <path
-                      d={`M 0 18.5 H ${22 + row.lane * 16}`}
+                      d={`M 0 ${GRAPH_ROW_CENTER} H ${22 + row.lane * 16}`}
                       stroke={rowColor}
                       opacity="0.6"
                     />
@@ -237,7 +237,7 @@ export const History = memo(function History({
                   {row.above.map((e, i) => (
                     <path
                       key={`a${i}`}
-                      d={`M ${22 + e.from * 16} 0 L ${22 + e.to * 16} 18.5`}
+                      d={`M ${22 + e.from * 16} 0 L ${22 + e.to * 16} ${GRAPH_ROW_CENTER}`}
                       stroke={colors[e.color]}
                       strokeDasharray={
                         hasWorkingChanges &&
@@ -252,7 +252,7 @@ export const History = memo(function History({
                   {row.below.map((e, i) => (
                     <path
                       key={`b${i}`}
-                      d={`M ${22 + e.from * 16} 18.5 C ${22 + e.from * 16} 29, ${22 + e.to * 16} 27, ${22 + e.to * 16} 37`}
+                      d={`M ${22 + e.from * 16} ${GRAPH_ROW_CENTER} C ${22 + e.from * 16} ${GRAPH_ROW_HEIGHT * 0.78}, ${22 + e.to * 16} ${GRAPH_ROW_HEIGHT * 0.73}, ${22 + e.to * 16} ${GRAPH_ROW_HEIGHT}`}
                       stroke={colors[e.color]}
                       strokeDasharray={
                         hasWorkingChanges &&
@@ -267,7 +267,7 @@ export const History = memo(function History({
                   {isWorking ? (
                     <circle
                       cx={22 + row.lane * 16}
-                      cy={18.5}
+                      cy={GRAPH_ROW_CENTER}
                       r={5}
                       fill="#161a1d"
                       stroke={rowColor}
