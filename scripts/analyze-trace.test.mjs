@@ -1,5 +1,70 @@
 import { expect, it } from "vitest";
-import { analyzeTrace, compareTraces } from "./analyze-trace.mjs";
+import {
+  analyzeStartup,
+  analyzeTrace,
+  compareTraces,
+} from "./analyze-trace.mjs";
+
+it("reports native startup independently of reset-window frontend timings", () => {
+  const report = analyzeTrace({
+    ...trace([sample(5)]),
+    gauges: {
+      startup: {
+        native_entry_to_setup_ms: 200,
+        native_entry_to_repository_watch_ms: 600,
+        native_entry_to_repository_ms: 740,
+        ready_in_foreground: false,
+      },
+    },
+  });
+  expect(report.startup).toEqual({
+    readyInForeground: false,
+    milestones: [
+      {
+        name: "setup",
+        nativeEntryMs: 200,
+        since: "native_entry",
+        intervalMs: 200,
+      },
+      {
+        name: "repository_watch",
+        nativeEntryMs: 600,
+        since: "setup",
+        intervalMs: 400,
+      },
+      {
+        name: "repository",
+        nativeEntryMs: 740,
+        since: "repository_watch",
+        intervalMs: 140,
+      },
+    ],
+  });
+  expect(analyzeTrace(trace([])).startup).toBeNull();
+  expect(analyzeStartup({ native_entry_to_welcome_ms: 100 })).toEqual({
+    readyInForeground: null,
+    milestones: [
+      {
+        name: "welcome",
+        nativeEntryMs: 100,
+        since: "native_entry",
+        intervalMs: 100,
+      },
+    ],
+  });
+});
+
+it("rejects malformed startup metadata rather than coercing measurements", () => {
+  for (const gauge of [
+    [],
+    "bad",
+    { ready_in_foreground: "false" },
+    ...[-1, NaN, Infinity, "100", null].map((value) => ({
+      native_entry_to_setup_ms: value,
+    })),
+  ])
+    expect(() => analyzeStartup(gauge)).toThrow();
+});
 
 const trace = (samples) => ({
   version: 3,

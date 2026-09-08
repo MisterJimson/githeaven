@@ -1,6 +1,41 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+export function analyzeStartup(gauge) {
+  if (gauge == null) return null;
+  if (typeof gauge !== "object" || Array.isArray(gauge))
+    throw new Error("Invalid startup gauge.");
+  const milestones = [];
+  for (const name of [
+    "setup",
+    "frontend",
+    "repository_discovery",
+    "repository_snapshot",
+    "repository_watch",
+    "repository",
+    "welcome",
+  ]) {
+    const value = gauge[`native_entry_to_${name}_ms`];
+    if (value === undefined) continue;
+    if (!Number.isFinite(value) || value < 0)
+      throw new Error(`Invalid startup milestone: ${name}.`);
+    milestones.push({ name, nativeEntryMs: value });
+  }
+  const foreground = gauge.ready_in_foreground;
+  if (foreground !== undefined && typeof foreground !== "boolean")
+    throw new Error("Invalid startup foreground status.");
+  milestones.sort((a, b) => a.nativeEntryMs - b.nativeEntryMs);
+  return {
+    readyInForeground: foreground ?? null,
+    milestones: milestones.map((row, index) => ({
+      ...row,
+      since: index ? milestones[index - 1].name : "native_entry",
+      intervalMs:
+        row.nativeEntryMs - (index ? milestones[index - 1].nativeEntryMs : 0),
+    })),
+  };
+}
+
 export function analyzeTrace(report) {
   if (![2, 3].includes(report?.version) || !Array.isArray(report.samples))
     throw new Error("Expected a Githeaven trace (schema 2 or 3).");
@@ -32,6 +67,7 @@ export function analyzeTrace(report) {
     );
   return {
     window: report.window ?? null,
+    startup: analyzeStartup(report.gauges?.startup),
     warnings,
     operations: [...groups]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -88,6 +124,22 @@ if (
         report.window ?? "Unknown measurement window",
       );
       for (const warning of report.warnings) console.log(warning);
+      if (report.startup) {
+        console.log(
+          "Startup ready in foreground:",
+          report.startup.readyInForeground ?? "unknown",
+        );
+        console.log(
+          "One process startup, retained across measurement resets. Intervals join observed milestones only; missing stages are not zero. Native clock excludes OS launch before main and is separate from frontend span starts. Rendering readiness does not prove interactivity.",
+        );
+        console.table(
+          report.startup.milestones.map((row) => ({
+            ...row,
+            nativeEntryMs: Number(row.nativeEntryMs.toFixed(3)),
+            intervalMs: Number(row.intervalMs.toFixed(3)),
+          })),
+        );
+      }
     }
     console.table(
       reports.length === 2 ? compareTraces(...reports) : reports[0].operations,
