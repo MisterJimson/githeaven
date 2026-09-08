@@ -16,6 +16,7 @@ const colors = [
 export const History = memo(function History({
   root,
   commits,
+  search = "",
   refs,
   selected,
   onSelect,
@@ -32,6 +33,7 @@ export const History = memo(function History({
 }: {
   root?: string;
   commits: Commit[];
+  search?: string;
   refs: Reference[];
   selected?: string;
   onSelect: (commit: Commit) => void;
@@ -49,6 +51,7 @@ export const History = memo(function History({
   const scroll = useRef<HTMLDivElement>(null);
   const headingScroll = useRef<HTMLDivElement>(null);
   const hasWorkingChanges = workingCount > 0;
+  const query = search.trim().toLowerCase();
   // A presentation-only child of HEAD, never a real commit or Git command input.
   const entries = useMemo<Commit[]>(
     () =>
@@ -190,6 +193,12 @@ export const History = memo(function History({
             const commit = entries[item.index];
             const row = graph[item.index];
             const isWorking = hasWorkingChanges && item.index === 0;
+            const dimmed =
+              !isWorking &&
+              !!query &&
+              !`${commit.subject} ${commit.author} ${commit.oid}`
+                .toLowerCase()
+                .includes(query);
             const commitRefs = refMap.get(commit.oid) ?? [];
             const rowColor = colors[row.color];
             const isSelected = isWorking
@@ -216,7 +225,7 @@ export const History = memo(function History({
                     ? `Working changes, ${workingCount} changed ${workingCount === 1 ? "file" : "files"}`
                     : undefined
                 }
-                className={`commit-row ${isWorking ? "ghost-commit" : ""} ${isSelected ? "selected" : ""}`}
+                className={`commit-row ${isWorking ? "ghost-commit" : ""} ${isSelected ? "selected" : ""} ${dimmed ? "search-dimmed" : ""}`}
                 onClick={() =>
                   isWorking ? onSelectWorking() : onSelect(commit)
                 }

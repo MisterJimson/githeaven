@@ -1193,14 +1193,8 @@ export function App() {
   const visibleCommits = useMemo(() => {
     const commits = repo?.commits ?? [];
     const reach = branchFilter ? reachable(commits, branchFilter) : null;
-    const query = filter.toLowerCase();
-    return commits.filter(
-      (c) =>
-        (!reach || reach.has(c.oid)) &&
-        (!query ||
-          `${c.subject} ${c.author} ${c.oid}`.toLowerCase().includes(query)),
-    );
-  }, [repo?.commits, filter, branchFilter]);
+    return reach ? commits.filter((c) => reach.has(c.oid)) : commits;
+  }, [repo?.commits, branchFilter]);
   const recordTiming = useCallback(
     (ms: number) => setTimes((t) => [...t.slice(-49), ms]),
     [],
@@ -1592,6 +1586,7 @@ export function App() {
                               hasMore={repo.has_more}
                               onLoadMore={loadOlder}
                               commits={visibleCommits}
+                              search={filter}
                               refs={repo.refs ?? []}
                               selected={
                                 reviewKind === "commit"

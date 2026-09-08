@@ -1464,3 +1464,85 @@ it.each(["commit", "push", "unchecked"])(
     ).toHaveLength(scenario === "push" ? 1 : 0);
   },
 );
+
+it("dims search misses without changing graph rows, lanes, selection, or scroll", async () => {
+  const commits = [
+    {
+      oid: "merge",
+      parents: ["left", "right"],
+      subject: "Merge branches",
+      author: "Ada",
+      timestamp: 4,
+    },
+    {
+      oid: "left",
+      parents: ["base"],
+      subject: "Fix metrics",
+      author: "Grace",
+      timestamp: 3,
+    },
+    {
+      oid: "right",
+      parents: ["base"],
+      subject: "Update docs",
+      author: "Ada",
+      timestamp: 2,
+    },
+    {
+      oid: "base",
+      parents: [],
+      subject: "Initial commit",
+      author: "Linus",
+      timestamp: 1,
+    },
+  ];
+  await openWorkspace({ commits, head: "merge" });
+  fireEvent.click(screen.getByRole("option", { name: /Merge branches/ }));
+  const viewport = screen.getByRole("listbox", { name: "Commit history" });
+  const rows = within(viewport).getAllByRole("option");
+  const geometry = () =>
+    rows.map((row) => ({
+      style: row.getAttribute("style"),
+      edges: [...row.querySelectorAll("path")].map((path) =>
+        path.getAttribute("d"),
+      ),
+      node: row.querySelector("circle")?.getAttribute("cx"),
+    }));
+  const before = geometry();
+  viewport.scrollTop = 42;
+  clearPerformanceSamples();
+  const search = screen.getByRole("textbox", { name: "Search commits" });
+  fireEvent.change(search, { target: { value: "METRICS" } });
+  expect(within(viewport).getAllByRole("option")).toEqual(rows);
+  expect(rows.map((row) => row.classList.contains("search-dimmed"))).toEqual([
+    true,
+    false,
+    true,
+    true,
+  ]);
+  expect(rows[0].getAttribute("aria-selected")).toBe("true");
+  expect(geometry()).toEqual(before);
+  expect(viewport.scrollTop).toBe(42);
+  fireEvent.change(search, { target: { value: "Ada" } });
+  expect(rows.map((row) => row.classList.contains("search-dimmed"))).toEqual([
+    false,
+    true,
+    false,
+    true,
+  ]);
+  fireEvent.change(search, { target: { value: "no matches" } });
+  expect(within(viewport).getAllByRole("option")).toEqual(rows);
+  expect(rows.every((row) => row.classList.contains("search-dimmed"))).toBe(
+    true,
+  );
+  fireEvent.change(search, { target: { value: " " } });
+  expect(rows.some((row) => row.classList.contains("search-dimmed"))).toBe(
+    false,
+  );
+  expect(geometry()).toEqual(before);
+  expect(
+    performanceReport().samples.filter(
+      (sample) => sample.name === "history.layout",
+    ),
+  ).toHaveLength(0);
+});

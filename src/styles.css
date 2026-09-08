@@ -435,6 +435,9 @@ kbd {
 .commit-row.selected:hover {
   background: #2c4033;
 }
+.commit-row.search-dimmed {
+  opacity: 0.22;
+}
 .commit-row .graph-svg {
   fill: none;
   stroke-width: 1.4;
