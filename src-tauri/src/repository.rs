@@ -2,9 +2,9 @@ use serde::Serialize;
 use std::{
     collections::BTreeSet,
     fs,
-    io::Write,
+    io::{BufRead, BufReader, Read, Write},
     path::{Component, Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::Instant,
 };
 
@@ -61,7 +61,7 @@ pub struct Versions {
     pub elapsed_ms: f64,
 }
 
-pub fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+fn git_command(root: &Path, args: &[&str]) -> Command {
     let mut cmd = Command::new("git");
     // Stash constructs its own pathspecs internally; literal mode prevents its
     // cleanup from removing the untracked files it has already saved.
@@ -80,7 +80,10 @@ pub fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000);
     }
-    let out = cmd
+    cmd
+}
+pub fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let out = git_command(root, args)
         .output()
         .map_err(|e| format!("Could not run Git. Install Git and restart the app. {e}"))?;
     if !out.status.success() {
@@ -387,8 +390,15 @@ pub fn main_file_contents(root: &Path, path: &str) -> Result<Option<String>, Str
     read_blob(root, oid.trim(), path)
 }
 fn read_blob(root: &Path, revision: &str, path: &str) -> Result<Option<String>, String> {
-    relative(path)?;
-    let spec = format!("{revision}:{path}");
+    let normalized = relative(path)?
+        .components()
+        .filter_map(|part| match part {
+            Component::Normal(name) => name.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    let path = normalized.as_str();
     // Absence is normal for added/deleted files. Verify through the tree/index listing
     // rather than interpreting arbitrary Git failures as an empty file.
     let listed = if revision.is_empty() {
@@ -399,15 +409,83 @@ fn read_blob(root: &Path, revision: &str, path: &str) -> Result<Option<String>, 
     if listed.is_empty() {
         return Ok(None);
     }
-    let size: usize = git_text(root, &["cat-file", "-s", &spec])?
-        .trim()
-        .parse()
-        .map_err(|_| "Invalid blob size.")?;
-    if size > MAX_FILE {
-        return Err("File exceeds the prototype's 2 MB text limit.".into());
-    }
-    text_content(git(root, &["cat-file", "blob", &spec])?).map(Some)
+    // Resolve the blob ID from the NUL-delimited listing. Never send a filename
+    // through cat-file's line protocol (filenames may contain newlines).
+    let record = listed
+        .split(|byte| *byte == 0)
+        .find(|record| {
+            let Some(tab) = record.iter().position(|byte| *byte == b'\t') else {
+                return false;
+            };
+            &record[tab + 1..] == path.as_bytes()
+        })
+        .ok_or("Expected an exact file entry.")?;
+    let header = record.split(|byte| *byte == b'\t').next().unwrap();
+    let header = std::str::from_utf8(header).map_err(|_| "Invalid Git object entry.")?;
+    let fields: Vec<_> = header.split_whitespace().collect();
+    let oid = if revision.is_empty() {
+        if fields.len() != 3 || fields[2] != "0" {
+            return Err("File has unresolved index stages.".into());
+        }
+        fields[1]
+    } else {
+        if fields.len() != 3 || fields[1] != "blob" {
+            return Err("Selected entry is not a blob.".into());
+        }
+        fields[2]
+    };
+    read_blob_object(root, oid).map(Some)
 }
+
+fn read_blob_object(root: &Path, oid: &str) -> Result<String, String> {
+    validate_oid(oid)?;
+    let mut child = git_command(root, &["cat-file", "--batch"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Could not start Git blob reader: {e}"))?;
+    let result = (|| {
+        // Closing stdin after one request ensures the process exits after its reply.
+        let mut input = child.stdin.take().ok_or("Missing Git stdin.")?;
+        writeln!(input, "{oid}").map_err(|e| e.to_string())?;
+        drop(input);
+        let mut output = BufReader::new(child.stdout.take().ok_or("Missing Git stdout.")?);
+        let mut header = String::new();
+        output
+            .by_ref()
+            .take(256)
+            .read_line(&mut header)
+            .map_err(|e| e.to_string())?;
+        let fields: Vec<_> = header.split_whitespace().collect();
+        if !header.ends_with('\n') || fields.len() != 3 || fields[0] != oid || fields[1] != "blob" {
+            return Err("Git returned an invalid or missing blob.".into());
+        }
+        let size: usize = fields[2].parse().map_err(|_| "Invalid blob size.")?;
+        if size > MAX_FILE {
+            return Err("File exceeds the prototype's 2 MB text limit.".into());
+        }
+        let mut bytes = vec![0; size];
+        output.read_exact(&mut bytes).map_err(|e| e.to_string())?;
+        let mut newline = [0];
+        output.read_exact(&mut newline).map_err(|e| e.to_string())?;
+        if newline != [b'\n'] {
+            return Err("Invalid Git blob terminator.".into());
+        }
+        text_content(bytes)
+    })();
+    // In particular, do not drain/allocate oversized blobs after reading the header.
+    if result.is_err() {
+        let _ = child.kill();
+    }
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    let content = result?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().into());
+    }
+    Ok(content)
+}
+
 pub fn versions(
     root: &Path,
     path: &str,
@@ -614,6 +692,72 @@ mod tests {
         git(dir.path(), &["config", "user.name", "Test"]).unwrap();
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
+    }
+    #[test]
+    fn blob_reader_handles_unusual_paths_empty_and_missing_files() {
+        let dir = repo();
+        let r = dir.path();
+        #[cfg(not(windows))]
+        let paths = ["normal.txt", "tab\tname.txt", "line\nname.txt", "empty.txt"];
+        #[cfg(windows)]
+        let paths = ["normal.txt", "space name.txt", "unicode-é.txt", "empty.txt"];
+        for path in paths {
+            let contents = if path == "empty.txt" {
+                ""
+            } else {
+                "first\nsecond\n"
+            };
+            fs::write(r.join(path), contents).unwrap();
+            stage(r, path, false).unwrap();
+            assert_eq!(read_blob(r, "", path).unwrap().as_deref(), Some(contents));
+        }
+        git(r, &["commit", "-m", "Files"]).unwrap();
+        assert_eq!(
+            read_blob(r, "HEAD", paths[2]).unwrap(),
+            Some("first\nsecond\n".into())
+        );
+        assert!(read_blob(r, "", "./normal.txt").is_err());
+        assert_eq!(read_blob(r, "", "missing.txt").unwrap(), None);
+        assert_eq!(read_blob(r, "HEAD", "missing.txt").unwrap(), None);
+        assert!(read_blob(r, "bad-revision", "normal.txt").is_err());
+        assert!(read_blob_object(r, &"0".repeat(40)).is_err());
+    }
+    #[test]
+    fn blob_reader_does_not_treat_an_unmerged_index_as_missing() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("a.txt"), "base\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        git(r, &["checkout", "-b", "feature"]).unwrap();
+        fs::write(r.join("a.txt"), "feature\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Feature"]).unwrap();
+        git(r, &["checkout", "main"]).unwrap();
+        fs::write(r.join("a.txt"), "main\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Main"]).unwrap();
+        assert!(git(r, &["merge", "feature"]).is_err());
+        assert!(read_blob(r, "", "a.txt")
+            .unwrap_err()
+            .contains("unresolved index stages"));
+    }
+    #[test]
+    fn blob_reader_rejects_large_binary_and_non_blob_objects() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("large.txt"), vec![b'a'; MAX_FILE + 1]).unwrap();
+        fs::write(r.join("binary.txt"), [0, 1, 2]).unwrap();
+        stage_all(r, false).unwrap();
+        assert!(read_blob(r, "", "large.txt").unwrap_err().contains("2 MB"));
+        assert!(read_blob(r, "", "binary.txt").is_err());
+        git(r, &["commit", "-m", "Files"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        assert!(read_blob_object(r, oid.trim()).is_err());
+        // A rejected oversized request must not poison subsequent reads.
+        fs::write(r.join("small.txt"), "small").unwrap();
+        stage(r, "small.txt", false).unwrap();
+        assert_eq!(read_blob(r, "", "small.txt").unwrap(), Some("small".into()));
     }
     #[test]
     fn snapshot_includes_detached_history_and_honors_working_only_reads() {
