@@ -43,7 +43,10 @@ import type { FileSession } from "./Surface";
 import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
 import { startRuntimeCapture } from "./runtimeCapture";
-import { downloadPerformanceReport } from "./performance";
+import {
+  clearPerformanceSamples,
+  downloadPerformanceReport,
+} from "./performance";
 import { startForegroundTiming } from "./timing";
 import type {
   Commit,
@@ -2297,6 +2300,7 @@ export function App() {
           <button
             className="text-button"
             onClick={() => {
+              clearPerformanceSamples();
               setTimes([]);
               setTabTimes([]);
               setFileTimes([]);

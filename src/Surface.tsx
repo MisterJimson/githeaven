@@ -22,6 +22,7 @@ import { getSharedHighlighter, type CodeViewItem } from "@pierre/diffs";
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
 import { DiffCache } from "./DiffCache";
+import { nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
 import { registerGauge } from "./performance";
@@ -96,15 +97,11 @@ function PreparedDiffs({
           oldPath: change.original_path,
         });
     }
-    const selectedIndex = candidates.findIndex(
-      (s) => s.path === selection?.path && s.source === selection?.source,
-    );
-    if (selectedIndex > 0)
-      candidates.unshift(...candidates.splice(selectedIndex, 1));
+    const nearby = nearbyDiffs(candidates, selection);
     const timer = setTimeout(() => {
       void (async () => {
         // One speculative diff at a time; leave the second highlight worker free for clicks.
-        for (const candidate of candidates.slice(0, 8)) {
+        for (const candidate of nearby) {
           if (!active) break;
           try {
             await cache.prepare(
@@ -130,6 +127,8 @@ function PreparedDiffs({
     refresh,
     selection?.path,
     selection?.source,
+    selection?.oid,
+    selection?.parent,
     previews,
   ]);
   return (

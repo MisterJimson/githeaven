@@ -7,6 +7,8 @@ export interface PerfSample {
 }
 const samples: PerfSample[] = [];
 const capacity = 2000;
+let windowStart = 0;
+let discardedSamples = 0;
 
 export function recordDuration(
   name: string,
@@ -14,7 +16,12 @@ export function recordDuration(
   duration: number,
   outcome: PerfSample["outcome"] = "ok",
 ) {
-  if (samples.length === capacity) samples.shift();
+  // Ignore work started before Reset, even if it finishes in the new window.
+  if (start < windowStart) return;
+  if (samples.length === capacity) {
+    samples.shift();
+    discardedSamples++;
+  }
   samples.push({ name, start, duration, outcome });
 }
 // Names are operation labels only: never include source text, paths or command arguments.
@@ -35,7 +42,13 @@ export function performanceReport() {
     groups.set(sample.name, group);
   }
   return {
-    version: 2,
+    version: 3,
+    window: {
+      start: windowStart,
+      duration: performance.now() - windowStart,
+      startedAt: new Date(performance.timeOrigin + windowStart).toISOString(),
+      discardedSamples,
+    },
     counters: Object.fromEntries(counters),
     gauges: Object.fromEntries(
       [...gauges].map(([name, read]) => [name, read()]),
@@ -61,6 +74,8 @@ export function performanceReport() {
 export function clearPerformanceSamples() {
   samples.length = 0;
   counters.clear();
+  windowStart = performance.now();
+  discardedSamples = 0;
 }
 export async function downloadPerformanceReport() {
   if (isTauri()) {

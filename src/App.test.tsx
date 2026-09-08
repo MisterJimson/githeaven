@@ -12,6 +12,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { App } from "./App";
 import { call } from "./api";
+import { countEvent, performanceReport, startSpan } from "./performance";
 import type { Snapshot, Selection } from "./types";
 
 const diffLoads = vi.hoisted(() => vi.fn());
@@ -1094,4 +1095,20 @@ it("Escape returns from a working diff to the graph and clears file selection", 
   expect(button.getAttribute("aria-pressed")).toBe("false");
   fireEvent.click(button);
   expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+});
+
+it("resets exported measurements along with the performance notebook", async () => {
+  await openWorkspace({ changes: [] });
+  startSpan("test.before-reset")();
+  countEvent("test.before-reset");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Performance measurements" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reset samples" }));
+  const report = performanceReport();
+  expect(report.samples.some((s) => s.name === "test.before-reset")).toBe(
+    false,
+  );
+  expect(report.counters["test.before-reset"]).toBeUndefined();
+  expect(report.window.discardedSamples).toBe(0);
 });
