@@ -323,6 +323,13 @@ export const History = memo(function History({
                   {commitRefs.length > 2 && (
                     <span className="more-refs">+{commitRefs.length - 2}</span>
                   )}
+                  {commitRefs.length > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="ref-connector"
+                      style={{ background: rowColor }}
+                    />
+                  )}
                 </span>
                 <svg
                   width={graphWidth}
