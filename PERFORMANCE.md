@@ -633,3 +633,18 @@ Successful editor saves now record `save.total` from save acceptance through the
 The rendered checkpoint is canceled on unmount or replacement by a newer successful save, and the existing foreground helper excludes focus/visibility interruptions. Errors do not emit successful ready checkpoints. A successful write may still leave a newer draft dirty if the user typed during the request; the metric means that the submitted revision was saved and its result processed, not that every subsequent edit is on disk.
 
 Deferred-write tests verify no completion sample is recorded before the native result, newer typing remains intact, and the next save uses the submitted revision as its original with the newer draft as its contents. Failure tests verify error classification and draft preservation. A controlled-frame test verifies the successful checkpoint requires two frames and unmount cancels an unfinished checkpoint. Full validation passes (134 frontend / 22 Rust tests). Native measurements remain necessary to compare these boundaries with the isolated 3–6ms backend save baseline.
+
+### Native small-file save baseline
+
+A fresh macOS arm64 release build opened the existing fixture's 4,963-byte `src/file-00.ts` in Edit. Ten pairs of inserting a short comment and saving, then undoing and saving, produced 20 successful writes. Native UI automation verified `Saved to disk` after each operation, so these are serialized saves rather than overlapping-write or rapid-typing stress. The measurement window was reset after opening the editor; no build ran during capture.
+
+| Boundary                         | Samples | Median ms | p95 ms | Maximum ms |
+| -------------------------------- | ------- | --------- | ------ | ---------- |
+| `ipc.save_file`                  | 20      | 6         | 8      | 37         |
+| `save.total`                     | 20      | 6         | 8      | 37         |
+| `ui.save-ready`                  | 20      | 38        | 46     | 72         |
+| Subsequent `git.refresh.working` | 20      | 27        | 33     | 44         |
+
+All 20 foreground save checkpoints completed. The checkpoint includes two post-commit frame opportunities by design; the difference from IPC is not solely React CPU or a physical presentation measurement. It also does not include subsequent watcher reconciliation. The trace had 20 working watcher batches, 24 inexpensive editor rereads (1ms median / 2ms maximum), and four additional general history refreshes over the longer capture. There were no diff-preparation/highlight spans in Edit. The 20 editor-change worker dispatches correspond to the edit/undo sequence, while 23 unchanged-baseline observations show repository refreshes did not reschedule that work solely because the baseline was reread.
+
+This is a small-file baseline, not a before/after improvement or a large-file result. The earlier isolated save benchmark used different file sizes and no Tauri/editor state, so its times must not be directly subtracted as IPC overhead. No frame-gap capture was enabled in this scenario. All fixture file hashes and its empty index diff were verified afterward; no commits were created in the fixture. The release build passed, the notebook and fixture tab were closed, and the primary workspace restored. Raw local artifact: `githeaven-save-native-small.json` in the system temporary directory. Large-file native saves and saves concurrent with external editing remain separate verification targets.
