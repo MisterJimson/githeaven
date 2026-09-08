@@ -1509,6 +1509,8 @@ it("dims search misses without changing graph rows, lanes, selection, or scroll"
       node: row.querySelector("circle")?.getAttribute("cx"),
     }));
   const before = geometry();
+  const graphPanel = viewport.closest(".history-panel")!;
+  const panelChildren = graphPanel.childElementCount;
   viewport.scrollTop = 42;
   clearPerformanceSamples();
   const search = screen.getByRole("textbox", { name: "Search commits" });
@@ -1523,6 +1525,7 @@ it("dims search misses without changing graph rows, lanes, selection, or scroll"
   expect(rows[0].getAttribute("aria-selected")).toBe("true");
   expect(geometry()).toEqual(before);
   expect(viewport.scrollTop).toBe(42);
+  expect(graphPanel.childElementCount).toBe(panelChildren);
   fireEvent.change(search, { target: { value: "Ada" } });
   expect(rows.map((row) => row.classList.contains("search-dimmed"))).toEqual([
     false,

@@ -478,12 +478,6 @@ kbd {
   border-color: #5b5139;
   color: #e1c98e;
 }
-.filter-note {
-  font-size: 10px;
-  color: #9aa990;
-  padding: 5px 16px;
-  background: #20291e;
-}
 .review-panel {
   min-height: 0;
   flex: 1;

@@ -1604,12 +1604,6 @@ export function App() {
                               workingSelected={reviewKind === "working"}
                               onSelectWorking={showWorking}
                             />
-                            {filter && (
-                              <div className="filter-note">
-                                Showing matching commits. Edges may continue
-                                through hidden commits.
-                              </div>
-                            )}
                           </div>
                         )}
                         {(paneMode === "history"
