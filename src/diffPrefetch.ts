@@ -5,7 +5,7 @@ import type { Selection } from "./types";
 export function nearbyDiffs(
   candidates: Selection[],
   selection?: Selection | null,
-): Selection[] {
+): { selection: Selection; maxBytes: number }[] {
   const selected = candidates.findIndex(
     (item) =>
       item.path === selection?.path &&
@@ -13,7 +13,10 @@ export function nearbyDiffs(
       item.oid === selection?.oid &&
       item.parent === selection?.parent,
   );
-  if (selected < 0) return candidates.slice(0, 8);
+  if (selected < 0)
+    return candidates
+      .slice(0, 8)
+      .map((selection) => ({ selection, maxBytes: 128 * 1024 }));
   const result = [candidates[selected]];
   for (
     let distance = 1;
@@ -25,5 +28,12 @@ export function nearbyDiffs(
     if (result.length < 8 && selected - distance >= 0)
       result.push(candidates[selected - distance]);
   }
-  return result;
+  return result.map((selection) => ({
+    selection,
+    maxBytes:
+      selection === candidates[selected - 1] ||
+      selection === candidates[selected + 1]
+        ? 512 * 1024
+        : 128 * 1024,
+  }));
 }

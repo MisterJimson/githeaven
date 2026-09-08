@@ -101,7 +101,7 @@ function PreparedDiffs({
     const timer = setTimeout(() => {
       void (async () => {
         // One speculative diff at a time; leave the second highlight worker free for clicks.
-        for (const candidate of nearby) {
+        for (const { selection: candidate, maxBytes } of nearby) {
           if (!active) break;
           try {
             await cache.prepare(
@@ -109,6 +109,7 @@ function PreparedDiffs({
               candidate,
               candidate.source === "commit" ? 0 : refresh,
               false,
+              maxBytes,
             );
           } catch {
             /* Explicit selection reports errors. */

@@ -105,3 +105,29 @@ it("promotes an in-flight large prefetch when clicked", async () => {
   expect(await selected).toBe(await background);
   expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
 });
+
+it("retries a deferred file when it becomes an immediate neighbor, keeping the byte cap", async () => {
+  vi.mocked(call).mockResolvedValue({
+    old: "x".repeat(100 * 1024),
+    new: "new",
+    elapsed_ms: 1,
+  });
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  await expect(cache.prepare("repo", selection, 1, false)).rejects.toThrow(
+    "deferred",
+  );
+  await cache.prepare("repo", selection, 1, false, 512 * 1024);
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+  vi.mocked(call).mockResolvedValue({
+    old: "x".repeat(300 * 1024),
+    new: "new",
+    elapsed_ms: 1,
+  });
+  await expect(
+    cache.prepare("repo", selection, 2, false, 512 * 1024),
+  ).rejects.toThrow("deferred");
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+});

@@ -20,10 +20,15 @@ export const diffKey = (root: string, s: Selection) =>
 // Matches the bounded Pierre AST cache; large diffs remain usable but are not retained.
 export class DiffCache {
   private entries = new Map<string, PreparedDiff>();
-  private deferred = new Map<string, number>();
+  private deferred = new Map<string, { refresh: number; bytes: number }>();
   private pending = new Map<
     string,
-    { refresh: number; foreground: boolean; result: Promise<PreparedDiff> }
+    {
+      refresh: number;
+      foreground: boolean;
+      maxBytes: number;
+      result: Promise<PreparedDiff>;
+    }
   >();
   private running = 0;
   private jobs: {
@@ -100,6 +105,7 @@ export class DiffCache {
     selection: Selection,
     refresh: number,
     foreground = true,
+    maxBytes = 128 * 1024,
   ): Promise<PreparedDiff> {
     const key = diffKey(root, selection);
     const ready = this.peek(root, selection);
@@ -111,12 +117,18 @@ export class DiffCache {
     if (pending?.refresh === refresh) {
       countEvent("diff.prepare.shared-request");
       if (foreground) pending.foreground = true;
+      pending.maxBytes = Math.max(pending.maxBytes, maxBytes);
       const queued = this.jobs.findIndex((job) => job.key === key);
       if (foreground && queued > 0)
         this.jobs.unshift(...this.jobs.splice(queued, 1));
       return pending.result;
     }
-    if (!foreground && this.deferred.get(key) === refresh) {
+    const deferred = this.deferred.get(key);
+    if (
+      !foreground &&
+      deferred?.refresh === refresh &&
+      deferred.bytes > maxBytes
+    ) {
       countEvent("diff.prepare.deferred-hit");
       throw new Error("Large diff deferred until selected.");
     }
@@ -124,6 +136,7 @@ export class DiffCache {
     const task = {
       refresh,
       foreground,
+      maxBytes,
       result: null as unknown as Promise<PreparedDiff>,
     };
     task.result = this.schedule(
@@ -144,13 +157,12 @@ export class DiffCache {
             });
         // Keep speculative work small enough that nearby files remain resident.
         // A click can promote an in-flight request and bypass this background budget.
-        if (
-          !task.foreground &&
-          2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)) > 128 * 1024
-        ) {
+        const sourceBytes =
+          2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0));
+        if (!task.foreground && sourceBytes > task.maxBytes) {
           if (this.pending.get(key) === task) {
             this.deferred.delete(key);
-            this.deferred.set(key, refresh);
+            this.deferred.set(key, { refresh, bytes: sourceBytes });
             if (this.deferred.size > 64)
               this.deferred.delete(this.deferred.keys().next().value!);
           }
