@@ -47,6 +47,9 @@ it("never treats an evicted syntax AST as a ready cache hit", async () => {
   expect(cache.peek("repo", selection)).toBeUndefined();
   await cache.prepare("repo", selection, 1);
   expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(2);
+  expect(call).toHaveBeenCalledTimes(1);
+  await cache.prepare("repo", selection, 2);
+  expect(call).toHaveBeenCalledTimes(2);
 });
 it("bounds retained diffs and isolates staged and working content", async () => {
   const cache = new DiffCache({
@@ -74,6 +77,14 @@ it("defers large speculative diffs but always prepares explicit selections", asy
     "deferred",
   );
   expect(pool.primeDiffHighlightCache).not.toHaveBeenCalled();
+  await expect(cache.prepare("repo", selection, 1, false)).rejects.toThrow(
+    "deferred",
+  );
+  expect(call).toHaveBeenCalledTimes(1);
+  await expect(cache.prepare("repo", selection, 2, false)).rejects.toThrow(
+    "deferred",
+  );
+  expect(call).toHaveBeenCalledTimes(2);
   await cache.prepare("repo", selection, 1, true);
   expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
 });

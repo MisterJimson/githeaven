@@ -20,6 +20,7 @@ export const diffKey = (root: string, s: Selection) =>
 // Matches the bounded Pierre AST cache; large diffs remain usable but are not retained.
 export class DiffCache {
   private entries = new Map<string, PreparedDiff>();
+  private deferred = new Map<string, number>();
   private pending = new Map<
     string,
     { refresh: number; foreground: boolean; result: Promise<PreparedDiff> }
@@ -69,6 +70,7 @@ export class DiffCache {
   stats() {
     return {
       entries: this.entries.size,
+      deferred: this.deferred.size,
       sourceBytes: [...this.entries.values()].reduce(
         (sum, item) => sum + item.bytes,
         0,
@@ -114,6 +116,10 @@ export class DiffCache {
         this.jobs.unshift(...this.jobs.splice(queued, 1));
       return pending.result;
     }
+    if (!foreground && this.deferred.get(key) === refresh) {
+      countEvent("diff.prepare.deferred-hit");
+      throw new Error("Large diff deferred until selected.");
+    }
     countEvent("diff.prepare.cache-miss");
     const task = {
       refresh,
@@ -123,26 +129,36 @@ export class DiffCache {
     task.result = this.schedule(
       key,
       async () => {
-        const data = await call<Versions>("file_versions", {
-          root,
-          path: selection.path,
-          source: selection.source,
-          oid: selection.oid ?? null,
-          parent: selection.parent ?? null,
-          oldPath: selection.oldPath ?? null,
-        });
+        const previous = this.entries.get(key);
+        const currentSource = previous?.refresh === refresh;
+        if (currentSource) countEvent("diff.prepare.source-cache-hit");
+        const data = currentSource
+          ? previous.versions
+          : await call<Versions>("file_versions", {
+              root,
+              path: selection.path,
+              source: selection.source,
+              oid: selection.oid ?? null,
+              parent: selection.parent ?? null,
+              oldPath: selection.oldPath ?? null,
+            });
         // Keep speculative work small enough that nearby files remain resident.
         // A click can promote an in-flight request and bypass this background budget.
         if (
           !task.foreground &&
           2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)) > 128 * 1024
         ) {
+          if (this.pending.get(key) === task) {
+            this.deferred.delete(key);
+            this.deferred.set(key, refresh);
+            if (this.deferred.size > 64)
+              this.deferred.delete(this.deferred.keys().next().value!);
+          }
           countEvent("diff.prepare.skipped-large-prefetch");
           throw new Error("Large diff deferred until selected.");
         }
         if (data.old === null && data.new === null)
           throw new Error("This file no longer exists in this comparison.");
-        const previous = this.entries.get(key);
         let diff: FileDiffMetadata;
         if (
           previous &&
@@ -200,6 +216,7 @@ export class DiffCache {
           bytes: 2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)),
         };
         if (this.pending.get(key) === task && value.bytes <= 6 * 1024 * 1024) {
+          this.deferred.delete(key);
           this.entries.delete(key);
           this.entries.set(key, value);
           let bytes = [...this.entries.values()].reduce(
