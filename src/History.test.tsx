@@ -6,6 +6,8 @@ import { History } from "./History";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 it("puts WIP in the graph above newer remote commits and connects it to HEAD's lane", () => {
@@ -205,4 +207,71 @@ it("selects adjacent commits with arrows, including WIP, without scrolling the p
   rerender(<History {...props} active={false} />);
   fireEvent.keyDown(viewport, { key: "ArrowDown" });
   expect(onSelect).not.toHaveBeenCalled();
+});
+
+it("resizes graph columns together with rows and remembers widths without changing lanes", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  vi.stubGlobal(
+    "PointerEvent",
+    class extends MouseEvent {
+      pointerId = 1;
+    },
+  );
+  const props = {
+    commits: [
+      { oid: "head", parents: [], subject: "Head", author: "A", timestamp: 1 },
+    ],
+    refs: [],
+    head: "head",
+    branch: "main",
+    workingCount: 0,
+    workingSelected: false,
+    onSelect: vi.fn(),
+    onSelectWorking: vi.fn(),
+  };
+  const { container } = render(<History {...props} />);
+  const branch = screen.getByRole("separator", {
+    name: "Resize branch / tag column",
+  });
+  branch.setPointerCapture = vi.fn();
+  branch.releasePointerCapture = vi.fn();
+  const row = screen.getByRole("option");
+  const nodeX = row.querySelector("circle")!.getAttribute("cx");
+  fireEvent.pointerDown(branch, { button: 0, clientX: 160 });
+  fireEvent.pointerMove(branch, { clientX: 260 });
+  expect(branch.getAttribute("aria-valuenow")).toBe("260");
+  expect(localStorage.getItem("githeaven.column.branch")).toBeNull();
+  fireEvent.pointerUp(branch, { clientX: 260 });
+  expect(localStorage.getItem("githeaven.column.branch")).toBe("260");
+  const graph = screen.getByRole("separator", { name: "Resize graph column" });
+  fireEvent.keyDown(graph, { key: "ArrowRight", shiftKey: true });
+  expect(graph.getAttribute("aria-valuenow")).toBe("128");
+  const heading = container.querySelector<HTMLElement>(".history-columns")!;
+  expect(heading.style.gridTemplateColumns).toBe(
+    "260px 128px minmax(180px, 1fr)",
+  );
+  expect(row.style.gridTemplateColumns).toBe(heading.style.gridTemplateColumns);
+  expect(row.querySelector("circle")!.getAttribute("cx")).toBe(nodeX);
+  expect(screen.getByRole("option")).toBe(row);
+  expect(props.onSelect).not.toHaveBeenCalled();
+  cleanup();
+  render(<History {...props} />);
+  const restored = screen.getByRole("separator", {
+    name: "Resize branch / tag column",
+  });
+  expect(restored.getAttribute("aria-valuenow")).toBe("260");
+  fireEvent.keyDown(restored, { key: "Home" });
+  expect(restored.getAttribute("aria-valuenow")).toBe("100");
+  fireEvent.doubleClick(restored);
+  expect(restored.getAttribute("aria-valuenow")).toBe("160");
+  expect(localStorage.getItem("githeaven.column.branch")).toBeNull();
+  fireEvent.doubleClick(
+    screen.getByRole("separator", { name: "Resize graph column" }),
+  );
+  expect(
+    screen
+      .getByRole("separator", { name: "Resize graph column" })
+      .getAttribute("aria-valuenow"),
+  ).toBe("78");
 });

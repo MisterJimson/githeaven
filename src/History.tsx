@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
 import { CommitNode } from "./CommitNode";
@@ -48,6 +48,34 @@ export const History = memo(function History({
   hasMore?: boolean;
   onLoadMore?: () => void;
 }) {
+  const [widths, setWidths] = useState<Partial<Record<Column, number>>>(() => {
+    const saved: Partial<Record<Column, number>> = {};
+    for (const column of ["branch", "graph"] as const) {
+      try {
+        const value = Number(
+          localStorage.getItem(`githeaven.column.${column}`),
+        );
+        if (Number.isFinite(value) && value > 0)
+          saved[column] = clampColumn(column, value);
+      } catch {
+        /* Optional preference. */
+      }
+    }
+    return saved;
+  });
+  function resizeColumn(column: Column, value: number | null, persist = true) {
+    const next = value === null ? undefined : clampColumn(column, value);
+    setWidths((current) => ({ ...current, [column]: next }));
+    if (persist) {
+      try {
+        if (next === undefined)
+          localStorage.removeItem(`githeaven.column.${column}`);
+        else localStorage.setItem(`githeaven.column.${column}`, String(next));
+      } catch {
+        /* Optional preference. */
+      }
+    }
+  }
   const scroll = useRef<HTMLDivElement>(null);
   const headingScroll = useRef<HTMLDivElement>(null);
   const hasWorkingChanges = workingCount > 0;
@@ -95,9 +123,10 @@ export const History = memo(function History({
       ),
     3,
   );
-  const graphWidth = Math.min(280, lanes * 16 + 30);
-  const columns = `160px ${graphWidth}px minmax(180px, 1fr)`;
-  const minWidth = 160 + graphWidth + 180 + 10;
+  const branchWidth = widths.branch ?? 160;
+  const graphWidth = widths.graph ?? Math.min(280, lanes * 16 + 30);
+  const columns = `${branchWidth}px ${graphWidth}px minmax(180px, 1fr)`;
+  const minWidth = branchWidth + graphWidth + 180 + 10;
   const virtual = useVirtualizer({
     count: entries.length,
     getItemKey: (index) => entries[index].oid,
@@ -130,8 +159,26 @@ export const History = memo(function History({
             minWidth,
           }}
         >
-          <span>BRANCH / TAG</span>
-          <span>GRAPH</span>
+          <span>
+            BRANCH / TAG
+            <ColumnDivider
+              column="branch"
+              width={branchWidth}
+              onResize={(value, persist) =>
+                resizeColumn("branch", value, persist)
+              }
+            />
+          </span>
+          <span>
+            GRAPH
+            <ColumnDivider
+              column="graph"
+              width={graphWidth}
+              onResize={(value, persist) =>
+                resizeColumn("graph", value, persist)
+              }
+            />
+          </span>
           <span>COMMIT MESSAGE</span>
         </div>
       </div>
@@ -363,3 +410,71 @@ export const History = memo(function History({
     </div>
   );
 });
+
+type Column = "branch" | "graph";
+const columnLimits = { branch: [100, 600], graph: [60, 800] } as const;
+function clampColumn(column: Column, width: number) {
+  const [min, max] = columnLimits[column];
+  return Math.round(Math.max(min, Math.min(max, width)));
+}
+function ColumnDivider({
+  column,
+  width,
+  onResize,
+}: {
+  column: Column;
+  width: number;
+  onResize: (width: number | null, persist?: boolean) => void;
+}) {
+  const drag = useRef<{ x: number; width: number; pointer: number } | null>(
+    null,
+  );
+  const [min, max] = columnLimits[column];
+  return (
+    <span
+      className="column-divider"
+      role="separator"
+      aria-label={`Resize ${column === "branch" ? "branch / tag" : "graph"} column`}
+      aria-orientation="vertical"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.current = { x: event.clientX, width, pointer: event.pointerId };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (drag.current && drag.current.pointer === event.pointerId)
+          onResize(drag.current.width + event.clientX - drag.current.x, false);
+      }}
+      onPointerUp={(event) => {
+        if (!drag.current || drag.current.pointer !== event.pointerId) return;
+        onResize(drag.current.width + event.clientX - drag.current.x);
+        drag.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={() => {
+        if (drag.current) onResize(drag.current.width, false);
+        drag.current = null;
+      }}
+      onLostPointerCapture={() => {
+        drag.current = null;
+      }}
+      onDoubleClick={() => onResize(null)}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 50 : 10;
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          event.preventDefault();
+          onResize(width + (event.key === "ArrowRight" ? step : -step));
+        } else if (event.key === "Home" || event.key === "End") {
+          event.preventDefault();
+          onResize(event.key === "Home" ? min : max);
+        }
+      }}
+    />
+  );
+}
