@@ -13,11 +13,11 @@ if (
   count < 1 ||
   count > 100 ||
   !Number.isFinite(interval) ||
-  interval < 500 ||
+  interval < 50 ||
   interval > 5000
 )
   throw new Error(
-    "Usage: pnpm perf:pulse fixture-directory [1-100 updates] [500-5000 milliseconds]",
+    "Usage: pnpm perf:pulse fixture-directory [1-100 updates] [50-5000 milliseconds]",
   );
 const root = resolve(directory);
 const manifest = JSON.parse(

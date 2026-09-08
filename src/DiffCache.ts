@@ -2,6 +2,16 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import { measureAsync, startSpan, countEvent } from "./performance";
 import { call } from "./api";
 import type { Selection, Versions } from "./types";
+export class DiffPreparationSuperseded extends Error {
+  constructor() {
+    super("Diff preparation superseded.");
+  }
+}
+function superseded(phase = "queue") {
+  countEvent("diff.prepare.superseded");
+  countEvent(`diff.superseded.${phase}`);
+  return new DiffPreparationSuperseded();
+}
 export interface HighlightPool {
   primeDiffHighlightCache(diff: FileDiffMetadata): Promise<void>;
   getDiffResultCache?(diff: FileDiffMetadata): unknown;
@@ -29,6 +39,7 @@ export class DiffCache {
       foreground: boolean;
       maxBytes: number;
       result: Promise<PreparedDiff>;
+      cancelParser?: () => void;
     }
   >();
   private running = 0;
@@ -55,7 +66,8 @@ export class DiffCache {
         run: () => {
           finishWait();
           this.running++;
-          void work()
+          void Promise.resolve()
+            .then(work)
             .then(resolve, reject)
             .finally(() => {
               this.running--;
@@ -67,8 +79,7 @@ export class DiffCache {
       else {
         if (foreground) this.jobs.unshift(job);
         else this.jobs.push(job);
-        if (this.jobs.length > 24)
-          this.jobs.pop()!.reject(new Error("Diff preparation superseded."));
+        if (this.jobs.length > 24) this.jobs.pop()!.reject(superseded());
       }
     });
   }
@@ -133,16 +144,28 @@ export class DiffCache {
       countEvent("diff.prepare.deferred-hit");
       throw new Error("Large diff deferred until selected.");
     }
+    // Keep only the newest queued revision for this comparison. In-flight
+    // Git reads finish naturally; parsing/highlighting checks ownership below.
+    pending?.cancelParser?.();
+    for (let i = this.jobs.length - 1; i >= 0; i--) {
+      if (this.jobs[i].key === key)
+        this.jobs.splice(i, 1)[0].reject(superseded());
+    }
     countEvent("diff.prepare.cache-miss");
     const task = {
       refresh,
       foreground,
       maxBytes,
       result: null as unknown as Promise<PreparedDiff>,
+      cancelParser: undefined as (() => void) | undefined,
+    };
+    const assertCurrent = (phase: string) => {
+      if (this.pending.get(key) !== task) throw superseded(phase);
     };
     task.result = this.schedule(
       key,
       async () => {
+        assertCurrent("queue");
         const previous = this.entries.get(key);
         const currentSource = previous?.refresh === refresh;
         if (currentSource) countEvent("diff.prepare.source-cache-hit");
@@ -156,6 +179,7 @@ export class DiffCache {
               parent: selection.parent ?? null,
               oldPath: selection.oldPath ?? null,
             });
+        assertCurrent("read");
         // Keep speculative work small enough that nearby files remain resident.
         // A click can promote an in-flight request and bypass this background budget.
         const sourceBytes =
@@ -173,13 +197,15 @@ export class DiffCache {
         if (data.old === null && data.new === null)
           throw new Error("This file no longer exists in this comparison.");
         let diff: FileDiffMetadata;
+        let created = false;
         if (
           previous &&
           previous.versions.old === data.old &&
           previous.versions.new === data.new
         )
           diff = previous.diff;
-        else
+        else {
+          created = true;
           diff = await measureAsync(
             "diff.parse-worker",
             () =>
@@ -188,6 +214,11 @@ export class DiffCache {
                   new URL("./diff.worker.ts", import.meta.url),
                   { type: "module" },
                 );
+                task.cancelParser = () => {
+                  worker.terminate();
+                  task.cancelParser = undefined;
+                  reject(superseded("parse"));
+                };
                 worker.onmessage = (
                   event: MessageEvent<{
                     result?: FileDiffMetadata;
@@ -195,6 +226,7 @@ export class DiffCache {
                   }>,
                 ) => {
                   worker.terminate();
+                  task.cancelParser = undefined;
                   if (event.data.result)
                     resolve({
                       ...event.data.result,
@@ -207,6 +239,7 @@ export class DiffCache {
                 };
                 worker.onerror = (event) => {
                   worker.terminate();
+                  task.cancelParser = undefined;
                   reject(new Error(event.message || "Diff worker failed"));
                 };
                 worker.postMessage({
@@ -216,9 +249,18 @@ export class DiffCache {
                 });
               }),
           );
+        }
+        assertCurrent("parse");
         await measureAsync("diff.highlight", () =>
           this.pool.primeDiffHighlightCache(diff),
         );
+        if (this.pending.get(key) !== task) {
+          // Only a newly allocated key belongs exclusively to this task. A
+          // reused key can be shared with the current revision.
+          if (created && diff.cacheKey)
+            this.pool.evictDiffFromCache?.(diff.cacheKey);
+          throw superseded("highlight");
+        }
         const value = {
           versions: data,
           diff,

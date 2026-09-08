@@ -21,7 +21,7 @@ import { Editor, type EditorFactory } from "@pierre/diffs/edit";
 import { getSharedHighlighter, type CodeViewItem } from "@pierre/diffs";
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
-import { DiffCache } from "./DiffCache";
+import { DiffCache, DiffPreparationSuperseded } from "./DiffCache";
 import { nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
@@ -350,7 +350,8 @@ function LiveDiff({
         });
       })
       .catch((error) => {
-        if (active) setError(errorText(error));
+        if (active && !(error instanceof DiffPreparationSuperseded))
+          setError(errorText(error));
       });
     return () => {
       active = false;

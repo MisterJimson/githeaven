@@ -201,3 +201,134 @@ it("preserves the previous syntax cache when replacement highlighting fails", as
   expect(pool.evictDiffFromCache).not.toHaveBeenCalled();
   expect(cache.peek("repo", selection)).toBe(first);
 });
+
+it("coalesces queued refreshes and skips parsing reads superseded by newer revisions", async () => {
+  const readers: ((value: unknown) => void)[] = [];
+  vi.mocked(call).mockImplementation(
+    () => new Promise((resolve) => readers.push(resolve)),
+  );
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  const results = [cache.prepare("repo", selection, 1).catch((e) => e)];
+  await vi.waitFor(() => expect(readers).toHaveLength(1));
+  results.push(cache.prepare("repo", selection, 2).catch((e) => e));
+  await vi.waitFor(() => expect(readers).toHaveLength(2));
+  for (let revision = 3; revision <= 20; revision++)
+    results.push(cache.prepare("repo", selection, revision).catch((e) => e));
+  expect(cache.stats().queued).toBe(1);
+  readers[0]({ old: "old", new: "stale-1", elapsed_ms: 1 });
+  readers[1]({ old: "old", new: "stale-2", elapsed_ms: 1 });
+  await vi.waitFor(() => expect(readers).toHaveLength(3));
+  readers[2]({ old: "old", new: "latest", elapsed_ms: 1 });
+  const completed = await Promise.all(results);
+  expect(
+    completed
+      .slice(0, -1)
+      .every(
+        (value) =>
+          value instanceof Error && value.message.includes("superseded"),
+      ),
+  ).toBe(true);
+  expect(completed.at(-1).versions.new).toBe("latest");
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+  expect(call).toHaveBeenCalledTimes(3);
+  expect(cache.peek("repo", selection)?.refresh).toBe(20);
+});
+
+it("evicts newly highlighted results that finished after being superseded", async () => {
+  const syntax = new Map();
+  let finish!: () => void;
+  const pool = {
+    primeDiffHighlightCache: vi.fn(async (diff) => {
+      syntax.set(diff.cacheKey, {});
+    }),
+    getDiffResultCache: (diff: { cacheKey?: string }) =>
+      syntax.get(diff.cacheKey),
+    evictDiffFromCache: vi.fn((key: string) => syntax.delete(key)),
+  };
+  pool.primeDiffHighlightCache.mockImplementationOnce(
+    (diff) =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          syntax.set(diff.cacheKey, {});
+          resolve();
+        };
+      }),
+  );
+  const cache = new DiffCache(pool);
+  const stale = cache.prepare("repo", selection, 1).catch((e) => e);
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  vi.mocked(call).mockResolvedValue({
+    old: "old",
+    new: "latest",
+    elapsed_ms: 1,
+  });
+  const latest = await cache.prepare("repo", selection, 2);
+  finish();
+  expect(await stale).toBeInstanceOf(Error);
+  expect(syntax.size).toBe(1);
+  expect(syntax.has(latest.diff.cacheKey)).toBe(true);
+  expect(cache.peek("repo", selection)).toBe(latest);
+});
+
+it("terminates an obsolete parser without highlighting its result", async () => {
+  const parsers: {
+    deliver: () => void;
+    terminate: ReturnType<typeof vi.fn>;
+  }[] = [];
+  class ControlledParser {
+    onmessage?: (event: { data: unknown }) => void;
+    terminate = vi.fn();
+    deliver = () => this.onmessage?.({ data: { result: { name: "file.ts" } } });
+    postMessage = () => parsers.push(this);
+  }
+  vi.stubGlobal("Worker", ControlledParser);
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  const old = cache.prepare("repo", selection, 1).catch((e) => e);
+  await vi.waitFor(() => expect(parsers).toHaveLength(1));
+  const latest = cache.prepare("repo", selection, 2);
+  expect(parsers[0].terminate).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(parsers).toHaveLength(2));
+  parsers[1].deliver();
+  await latest;
+  expect(await old).toBeInstanceOf(Error);
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+});
+
+it("does not evict a reused syntax key shared with a newer refresh", async () => {
+  const syntax = new Map();
+  let finish!: () => void;
+  const pool = {
+    primeDiffHighlightCache: vi.fn(async (diff) => {
+      syntax.set(diff.cacheKey, {});
+    }),
+    getDiffResultCache: (diff: { cacheKey?: string }) =>
+      syntax.get(diff.cacheKey),
+    evictDiffFromCache: vi.fn((key: string) => syntax.delete(key)),
+  };
+  const cache = new DiffCache(pool);
+  const first = await cache.prepare("repo", selection, 1);
+  syntax.clear();
+  pool.primeDiffHighlightCache.mockImplementationOnce(
+    (diff) =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          syntax.set(diff.cacheKey, {});
+          resolve();
+        };
+      }),
+  );
+  const stale = cache.prepare("repo", selection, 2).catch((e) => e);
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  const latest = await cache.prepare("repo", selection, 3);
+  finish();
+  await stale;
+  expect(latest.diff.cacheKey).toBe(first.diff.cacheKey);
+  expect(syntax.has(latest.diff.cacheKey)).toBe(true);
+  expect(pool.evictDiffFromCache).not.toHaveBeenCalled();
+});
