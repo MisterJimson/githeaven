@@ -610,3 +610,18 @@ pnpm perf:trace /path/to/githeaven-coalesced-watch.json /path/to/githeaven-live-
 ```
 
 Running this command on the retained local artifacts reproduced 42/28 highlight jobs, 38/24 parse jobs, 46/32 input reads, and 0/24 completed diff-ready samples. Both selected ranges report zero boundary-crossing spans. Tests cover exact endpoints, unclipped durations, crossing spans, excluded whole-window counters/gauges, invalid bounds, duplicate/unknown options, and the requirement to specify both comparison ranges. Full validation passed (131 frontend / 22 Rust tests). Local replay output: `/tmp/githeaven-live-range-comparison.txt`.
+
+### Production save-path benchmark
+
+`pnpm perf:save` measures the actual Rust `repository::save` implementation in a newly created disposable repository. It accepts no repository argument, never opens an existing workspace, and removes its temporary directory when the run finishes. Each size receives three warmups and 20 measured alternating-content saves. Readback validation runs outside the timed section. After each size, a stale-original save must fail without changing disk contents, and no save-temporary file may remain. The benchmark retains the production conflict checks, permission handling, file sync and rename; it is not a simplified write-only surrogate. Output is CSV with operation, bytes, iteration, and milliseconds; environment/build mode goes to stderr.
+
+On this Mac (macOS arm64, release Rust, Apple Git 2.50.1), the first run measured:
+
+| File size | Median ms | p95 ms | Maximum ms |
+| --------- | --------- | ------ | ---------- |
+| 1 KiB     | 3.246     | 4.084  | 4.105      |
+| 100 KiB   | 3.889     | 4.105  | 4.450      |
+| 1 MiB     | 3.988     | 5.667  | 5.915      |
+| 2 MiB     | 6.046     | 6.438  | 7.086      |
+
+These are warm-filesystem backend timings, excluding Tauri argument/result transfer, editor state updates, file watchers, refreshes and rendering. They do not establish cold-save, network-volume, Windows, or Linux latency. The measured disk path is not currently a reason to weaken durability or external-edit checks; native end-to-end save and follow-up work remain the next attribution targets. All readback/conflict/temporary-file checks passed, and invoking the binary with an existing repository argument was rejected before creating or changing files. Full validation passed (131 frontend / 22 Rust tests). Raw local artifacts: `/tmp/githeaven-save-baseline.csv` and `/tmp/githeaven-save-baseline.log`.
