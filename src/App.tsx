@@ -2097,12 +2097,14 @@ export function App() {
                                 <GitCommitHorizontal size={15} />
                                 Commit details
                               </span>
-                              <button
-                                className="text-button"
-                                onClick={showWorking}
-                              >
-                                Working changes
-                              </button>
+                              {changes.length > 0 && (
+                                <button
+                                  className="text-button"
+                                  onClick={showWorking}
+                                >
+                                  Working changes
+                                </button>
+                              )}
                             </div>
                             {selected && (
                               <>

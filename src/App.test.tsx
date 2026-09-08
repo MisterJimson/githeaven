@@ -1628,3 +1628,27 @@ it("asks before pulling over an unsaved editor draft", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
   expect((editor as HTMLTextAreaElement).value).toBe("unsaved draft");
 });
+
+it("only offers the inspector working changes shortcut when changes exist", async () => {
+  await openWorkspace();
+  const shortcut = () =>
+    screen.queryByRole("button", { name: "Working changes", hidden: true });
+  expect(shortcut()).toBeNull();
+  vi.mocked(call).mockResolvedValueOnce({
+    ...restoredSnapshot,
+    changes: [
+      { path: "a.txt", index: "M", worktree: " ", original_path: null },
+    ],
+    commits: null,
+    refs: null,
+  });
+  refreshWorkspace();
+  await waitFor(() => expect(shortcut()).not.toBeNull());
+  vi.mocked(call).mockResolvedValueOnce({
+    ...restoredSnapshot,
+    commits: null,
+    refs: null,
+  });
+  refreshWorkspace();
+  await waitFor(() => expect(shortcut()).toBeNull());
+});
