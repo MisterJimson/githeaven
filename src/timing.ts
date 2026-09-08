@@ -11,14 +11,15 @@ export function startForegroundTiming(name = "ui.paint"): () => number | null {
   const started = performance.now();
   let recorded = false;
   return () => {
+    if (recorded) return null;
+    recorded = true;
     const valid =
       foreground &&
       document.hasFocus() &&
       !document.hidden &&
       generation === foregroundGeneration;
     const duration = valid ? performance.now() - started : null;
-    if (!recorded && duration !== null) recordDuration(name, started, duration);
-    recorded = true;
+    if (duration !== null) recordDuration(name, started, duration);
     return duration;
   };
 }

@@ -11,6 +11,8 @@ it("measures elapsed time while the window remains in the foreground", () => {
   const finish = startForegroundTiming();
   now.mockReturnValue(125);
   expect(finish()).toBe(25);
+  now.mockReturnValue(60_000);
+  expect(finish()).toBeNull();
 });
 
 it("discards background starts and samples interrupted by loss of focus", () => {

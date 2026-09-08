@@ -1,0 +1,71 @@
+diff --git a/dist/editor/editor.d.ts b/dist/editor/editor.d.ts
+index 53603cdaa2d3493b4e121db559e9d14bac0d9914..564e050e57fa6f95d12009f7078f03e40ae3402d 100644
+--- a/dist/editor/editor.d.ts
++++ b/dist/editor/editor.d.ts
+@@ -106,6 +106,8 @@ interface EditorOptions<EType extends EditorType, LAnnotation, Caret> {
+    * Render an externally owned caret at its normalized document position.
+    */
+   renderCaret?: (caret: EditorCaret<Caret>) => HTMLElement;
++  /** Highlight initial and newly visible file rows with the editor tokenizer. */
++  viewportHighlight?: boolean;
+   /** Callback when the editor is attached to a file. */
+   onAttach?: (editor: Editor<EType, LAnnotation, Caret>, fileInstance: EditorComponent<EType, LAnnotation, Caret>) => void;
+   /**
+diff --git a/dist/editor/editor.js b/dist/editor/editor.js
+index b2b8aff87690d57eb21f4f7b1d2a654b5baa76b5..c909d5347199f9ea68b8e5af69716ccde13245fe 100644
+--- a/dist/editor/editor.js
++++ b/dist/editor/editor.js
+@@ -745,6 +745,8 @@ var Editor = class {
+ 		this.#lineAnnotations = lineAnnotations;
+ 		this.#renderRange = renderRange;
+ 		this.#viewportWindowLines = renderRange?.totalLines;
++		if (this.#options.viewportHighlight === true && this.type === "file" && fileInstance.options.tokenizeMaxLength === 0 && this.#tokenizer != null)
++			this.#onDeferTokenize(this.#tokenizer.tokenizeViewport(renderRange), this.#tokenizer.themeType);
+ 		this.#tokenizer?.prebuildStateStack(renderRange);
+ 		const retainedEditorState = editSession.editor;
+ 		const restoreEditorStateOnSync = this.#restoreEditorStateOnSync;
+diff --git a/dist/editor/tokenizer.d.ts b/dist/editor/tokenizer.d.ts
+index 62c043c566f681fe4593061a8d44aa851064124e..12bd9060c3ffae7db0f5831ee1766a533bc267e4 100644
+--- a/dist/editor/tokenizer.d.ts
++++ b/dist/editor/tokenizer.d.ts
+@@ -30,6 +30,7 @@ declare class EditorTokenizer {
+   syncTheme(codeOptions: BaseCodeOptions): void;
+   cleanUp(): void;
+   tokenize(change: TextDocumentChange, renderRange?: RenderRange, hostRealignsRows?: boolean): Map<number, Array<HighlightedToken>>;
++  tokenizeViewport(renderRange?: RenderRange): Map<number, Array<HighlightedToken>>;
+   prebuildStateStack(renderRange?: RenderRange): void;
+   stopBackgroundTokenize(): void;
+   pauseBackgroundTokenize(): void;
+diff --git a/dist/editor/tokenizer.js b/dist/editor/tokenizer.js
+index 804fb157d278ec26787fc0aede422ad205096780..4f9984a46a01a54cb143cd210e16a1fa6d42127c 100644
+--- a/dist/editor/tokenizer.js
++++ b/dist/editor/tokenizer.js
+@@ -295,6 +295,28 @@ var EditorTokenizer = class {
+ 		}
+ 		return dirtyLines;
+ 	}
++	// Render an unchanged viewport without publishing a document edit or disturbing undo.
++	tokenizeViewport(renderRange) {
++		this.#ensureGrammar();
++		this.#ensureActiveTheme();
++		if (this.#grammar === void 0 && !isGrammarlessLanguage(this.#textDocument.languageId))
++			throw new Error(`Grammar for language "${this.#textDocument.languageId}" not loaded`);
++		// A pending edit-tokenization job may leave stale checkpoints ahead of its cursor.
++		if (!this.#isStopped && this.#backgroundPrebuildEndLine < 0 && this.#lastLine >= 0)
++			this.#stateStack.length = Math.min(this.#stateStack.length, this.#lastLine + 1);
++		const start = renderRange?.startingLine ?? 0;
++		const end = Math.min(start + (renderRange?.totalLines ?? Infinity), this.#textDocument.lineCount);
++		this.#buildStateStack(start);
++		let state = this.#stateStack[start] ?? INITIAL;
++		const lines = new Map();
++		for (let line = start; line < end; line++) {
++			const result = this.#tokenizeLineAt(line, state);
++			lines.set(line, result.resolvedTokens);
++			state = result.state;
++			this.#stateStack[line + 1] = state;
++		}
++		return lines;
++	}
+ 	prebuildStateStack(renderRange) {
+ 		this.#ensureGrammar();
+ 		this.#prebuildStateStack(renderRange);

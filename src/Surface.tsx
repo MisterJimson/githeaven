@@ -18,14 +18,19 @@ import {
   type CodeViewHandle,
 } from "@pierre/diffs/react";
 import { Editor, type EditorFactory } from "@pierre/diffs/edit";
-import { getSharedHighlighter, type CodeViewItem } from "@pierre/diffs";
+import {
+  getSharedHighlighter,
+  getHighlighterIfLoaded,
+  getFiletypeFromFileName,
+  type CodeViewItem,
+} from "@pierre/diffs";
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
 import { DiffCache, DiffPreparationSuperseded } from "./DiffCache";
 import { nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
-import { registerGauge } from "./performance";
+import { countEvent, registerGauge } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type { Change, Selection, Versions } from "./types";
 
@@ -49,7 +54,11 @@ const highlighterOptions = {
   ] as const,
 };
 const createEditor: EditorFactory<undefined, undefined> = (type, options) =>
-  new Editor(type, { ...options, historyMaxEntries: 150 });
+  new Editor(type, {
+    ...options,
+    historyMaxEntries: 150,
+    viewportHighlight: type === "file",
+  });
 const DiffCacheContext = createContext<DiffCache | null>(null);
 function PreparedDiffs({
   children,
@@ -466,6 +475,15 @@ export const EditorSurface = memo(function EditorSurface({
 }) {
   const { font, onKeyDownCapture } = useViewerFont("editor");
   const session = selectedSession ?? emptyEditorSession;
+  const viewportHighlight = useMemo(() => {
+    const highlighter = getHighlighterIfLoaded();
+    return (
+      highlighter?.getLoadedThemes().includes("pierre-dark") === true &&
+      highlighter
+        .getLoadedLanguages()
+        .includes(getFiletypeFromFileName(session.path))
+    );
+  }, [session.path, session.version]);
   const view = useRef<CodeViewHandle<undefined, undefined>>(null);
   const { host, paint, schedule } = useEditorChanges(
     root,
@@ -474,8 +492,8 @@ export const EditorSurface = memo(function EditorSurface({
     session.version,
     refresh,
   );
-  const current = useRef({ session, onReady });
-  current.current = { session, onReady };
+  const current = useRef({ session, onReady, viewportHighlight });
+  current.current = { session, onReady, viewportHighlight };
   const measured = useRef(0);
   const onPostRender = useCallback(() => {
     paint();
@@ -490,7 +508,20 @@ export const EditorSurface = memo(function EditorSurface({
         return;
       measured.current = opened.version;
       const ms = opened.finishOpen?.();
-      if (ms != null) current.current.onReady(ms, opened.readMs ?? 0);
+      if (ms == null) return;
+      if (current.current.viewportHighlight) {
+        const colored = host.current
+          ?.querySelector("diffs-container")
+          ?.shadowRoot?.querySelector(
+            "[data-content] span[data-char][style*='color']",
+          );
+        countEvent(
+          colored
+            ? "editor.viewport-first-frame.colored"
+            : "editor.viewport-first-frame.uncolored",
+        );
+      }
+      current.current.onReady(ms, opened.readMs ?? 0);
     });
   }, [paint]);
   useLayoutEffect(() => {
@@ -501,10 +532,11 @@ export const EditorSurface = memo(function EditorSurface({
     () => ({
       ...shared,
       ...font,
+      tokenizeMaxLength: viewportHighlight ? 0 : undefined,
       unsafeCSS: font.unsafeCSS + changeGutterCSS,
       onPostRender,
     }),
-    [onPostRender, font],
+    [onPostRender, font, viewportHighlight],
   );
   const change = useCallback(
     (event: { file: { contents: string } }) => {
