@@ -581,3 +581,19 @@ The live diff previously invalidated its active effect on every repository refre
 Background prefetch requests for a newer revision now share an already-running foreground preparation rather than superseding it; the foreground owner remains responsible for reading the newest revision. The export counter `diff.prepare.foreground-protected` identifies this case. This does not mark the older cache entry as current for the newer revision, and a later explicit preparation still reads fresh inputs.
 
 A deferred-highlight integration test submits refreshes 1 through 20 while the first update is unfinished. It observes only the initial read and active update before releasing highlighting, then exactly one read for the latest request: three preparations total. The already-highlighted intermediate update is published and then replaced by the latest result in the same viewer. A separate test verifies switching files starts immediately while the old file's parse is unfinished, and that late completion cannot replace the newly selected file. Cache tests verify foreground protection and a subsequent fresh read. Existing scroll preservation, unchanged-content, transient-error, deferred staging, and syntax-readiness tests remain green. Full validation passes; native burst comparison remains necessary before claiming reduced CPU, supersession counts, or improved display latency.
+
+### Native live-diff coalescing comparison
+
+The release app repeated the same `perf:pulse <fixture> 100 50` sequence on `src/file-01.ts` in split diff view, using the same 32-file fixture and Mac. Both builds delivered 42 working refreshes for the pulse. To avoid comparing the unequal inspection/idle portions of the exports, the table selects spans whose start lies between the first pulse working-refresh start and 1,500ms after the final pulse working-refresh completion. The earlier trace's two later marker/restoration refreshes are excluded. These are approximately 6.6-second intervals in separate fresh release processes with warm OS caches, not randomized trials.
+
+| Observed operation                     | Before | After    |
+| -------------------------------------- | ------ | -------- |
+| Highlight jobs started                 | 42     | 28       |
+| Parse jobs started                     | 38     | 24       |
+| Diff input reads started               | 46     | 32       |
+| Completed `ui.diff-ready` measurements | 0      | 24       |
+| Frame gaps over 50ms                   | 0      | 1 (56ms) |
+
+Highlighting no longer repeatedly loses ownership before publication: the optimized capture has no superseded-preparation counter, compared with 41 superseded preparations in the earlier broader window. The 24 completed diff-ready measurements after the change were 222ms median and 311ms maximum; these time each preparation to its rendered checkpoint, not the age of the newest filesystem edit or physical presentation. Highlight duration itself was similar (180ms median before / 174ms after in the selected intervals); the improvement is fewer preparations and continued publication. A native screenshot after the pulse showed the correctly restored `updated-1` value with syntax highlighting. The pulse does not establish scrolling stability while actively scrolling or cross-platform behavior, and the new 56ms frame gap prevents a stall-free claim.
+
+All fixture working-file hashes and its empty index diff were preserved. Capture was stopped, the view returned to Split after inspecting the final text in Unified, the fixture tab closed, and the primary workspace restored. The native release build passed. Raw local artifacts: `githeaven-live-coalesce.json` in the system temporary directory and `/tmp/githeaven-live-coalesce-pulse.log`; comparison baseline remains `githeaven-coalesced-watch.json`. No additional process-memory or CPU-utilization measurement was made for this comparison.
