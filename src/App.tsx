@@ -1,3 +1,4 @@
+import { CommitPullRequests } from "./CommitPullRequests";
 import { CommitAvatar } from "./CommitNode";
 import {
   lazy,
@@ -2117,6 +2118,15 @@ export function App() {
                                   />
                                   <div className="commit-text">
                                     <strong>{selected.subject}</strong>
+                                    <CommitPullRequests
+                                      key={`${repo.root}:${selected.oid}`}
+                                      root={repo.root}
+                                      oid={selected.oid}
+                                      active={
+                                        mode === "history" &&
+                                        reviewKind === "commit"
+                                      }
+                                    />
                                     <span>
                                       {selected.author}
                                       <span className="dot-separator">·</span>

@@ -12,7 +12,7 @@ pub struct Avatar {
     login: String,
     url: String,
 }
-fn github_repo(remote: &str) -> Option<String> {
+pub(crate) fn github_repo(remote: &str) -> Option<String> {
     let path = remote
         .trim()
         .strip_prefix("git@github.com:")

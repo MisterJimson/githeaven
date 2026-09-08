@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod avatars;
+mod pull_requests;
 mod repository;
 mod startup;
 use notify::{RecursiveMode, Watcher};
@@ -206,6 +207,24 @@ fn close_repository(root: String, state: State<'_, Session>) -> Result<(), Strin
         .map_err(|e| e.to_string())?
         .remove(&PathBuf::from(root));
     Ok(())
+}
+
+#[tauri::command]
+async fn commit_pull_requests(
+    root: String,
+    oid: String,
+    state: State<'_, Session>,
+) -> Result<Vec<pull_requests::PullRequest>, String> {
+    let root = state.checked(&root)?;
+    tauri::async_runtime::spawn_blocking(move || pull_requests::lookup(&root, &oid))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn open_pull_request(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || pull_requests::open(&url))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -451,6 +470,8 @@ fn main() {
             open_repository,
             close_repository,
             commit_avatar,
+            commit_pull_requests,
+            open_pull_request,
             refresh_repository,
             commit_details,
             file_versions,
