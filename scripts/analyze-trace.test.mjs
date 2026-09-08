@@ -3,7 +3,72 @@ import {
   analyzeStartup,
   analyzeTrace,
   compareTraces,
+  parseTraceArgs,
 } from "./analyze-trace.mjs";
+
+it("selects span starts without clipping durations or attributing whole-window counters", () => {
+  const report = analyzeTrace(
+    {
+      version: 3,
+      samples: [
+        { name: "cross-before", start: 5, duration: 10, outcome: "ok" },
+        { name: "inside", start: 10, duration: 2, outcome: "ok" },
+        { name: "cross-after", start: 19, duration: 8, outcome: "ok" },
+        { name: "at-end", start: 20, duration: 1, outcome: "ok" },
+      ],
+      counters: { "watch.batch.working": 5 },
+      gauges: { startup: { native_entry_to_setup_ms: 100 } },
+    },
+    { start: 10, end: 20 },
+  );
+  expect(report.range).toEqual({
+    start: 10,
+    end: 20,
+    overlappingFromBefore: 1,
+    endingAfterRange: 1,
+  });
+  expect(report.operations.map((row) => [row.name, row.n, row.p50])).toEqual([
+    ["cross-after", 1, 8],
+    ["inside", 1, 2],
+  ]);
+  expect(report.watcher).toEqual([]);
+  expect(report.startup).toBeNull();
+  expect(report.warnings.join(" ")).toContain("not clipped");
+  for (const range of [
+    { start: -1, end: 5 },
+    { start: 1, end: 1 },
+    { start: 0, end: Infinity },
+  ])
+    expect(() => analyzeTrace({ version: 3, samples: [] }, range)).toThrow();
+});
+
+it("requires explicit ranges for both traces in an interval comparison", () => {
+  expect(
+    parseTraceArgs([
+      "before.json",
+      "after.json",
+      "--range",
+      "10:20",
+      "--after-range",
+      "100:110",
+    ]),
+  ).toEqual([
+    { path: "before.json", range: { start: 10, end: 20 } },
+    { path: "after.json", range: { start: 100, end: 110 } },
+  ]);
+  expect(parseTraceArgs(["one.json"])).toEqual([
+    { path: "one.json", range: undefined },
+  ]);
+  for (const args of [
+    ["one", "--range"],
+    ["one", "--range", "1:1"],
+    ["one", "--after-range", "1:2"],
+    ["one", "two", "--range", "1:2"],
+    ["one", "--range", "1:2", "--range", "2:3"],
+    ["one", "--invalid"],
+  ])
+    expect(() => parseTraceArgs(args)).toThrow();
+});
 
 it("reports native startup independently of reset-window frontend timings", () => {
   const report = analyzeTrace({

@@ -597,3 +597,16 @@ The release app repeated the same `perf:pulse <fixture> 100 50` sequence on `src
 Highlighting no longer repeatedly loses ownership before publication: the optimized capture has no superseded-preparation counter, compared with 41 superseded preparations in the earlier broader window. The 24 completed diff-ready measurements after the change were 222ms median and 311ms maximum; these time each preparation to its rendered checkpoint, not the age of the newest filesystem edit or physical presentation. Highlight duration itself was similar (180ms median before / 174ms after in the selected intervals); the improvement is fewer preparations and continued publication. A native screenshot after the pulse showed the correctly restored `updated-1` value with syntax highlighting. The pulse does not establish scrolling stability while actively scrolling or cross-platform behavior, and the new 56ms frame gap prevents a stall-free claim.
 
 All fixture working-file hashes and its empty index diff were preserved. Capture was stopped, the view returned to Split after inspecting the final text in Unified, the fixture tab closed, and the primary workspace restored. The native release build passed. Raw local artifacts: `githeaven-live-coalesce.json` in the system temporary directory and `/tmp/githeaven-live-coalesce-pulse.log`; comparison baseline remains `githeaven-coalesced-watch.json`. No additional process-memory or CPU-utilization measurement was made for this comparison.
+
+### Reproducible interval comparisons
+
+`perf:trace` now accepts `--range start:end` for one trace, and requires an explicit `--after-range start:end` when comparing ranged portions of two traces. Bounds use each trace's frontend monotonic milliseconds, with an inclusive start and exclusive end. Selection is by span start; durations are never clipped. The output separately counts spans overlapping the start from earlier work and selected spans ending after the range, so boundary-crossing work is visible. Whole-window watcher counters and process-lifetime startup gauges are omitted for ranged reports. Existing discarded-sample warnings remain applicable. This is descriptive analysis, not a regression gate or a substitute for matching workloads.
+
+The preceding native live-diff comparison can now be reproduced without a one-off filtering script:
+
+```sh
+pnpm perf:trace /path/to/githeaven-coalesced-watch.json /path/to/githeaven-live-coalesce.json \
+  --range 40612:47222 --after-range 29066:35706
+```
+
+Running this command on the retained local artifacts reproduced 42/28 highlight jobs, 38/24 parse jobs, 46/32 input reads, and 0/24 completed diff-ready samples. Both selected ranges report zero boundary-crossing spans. Tests cover exact endpoints, unclipped durations, crossing spans, excluded whole-window counters/gauges, invalid bounds, duplicate/unknown options, and the requirement to specify both comparison ranges. Full validation passed (131 frontend / 22 Rust tests). Local replay output: `/tmp/githeaven-live-range-comparison.txt`.
