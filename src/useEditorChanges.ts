@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { call } from "./api";
 import type { LineMark } from "./editorChanges";
+import { findLineMark } from "./lineMark";
+import { startSpan } from "./performance";
 
 export const changeGutterCSS = `
 [data-gutter] [data-main-change] { position: relative; }
@@ -25,21 +27,21 @@ export function useEditorChanges(
   const sequence = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const paint = useCallback(() => {
+    const finish = startSpan("editor.gutter-paint");
     for (const container of host.current?.querySelectorAll("diffs-container") ??
       []) {
       for (const node of container.shadowRoot?.querySelectorAll<HTMLElement>(
         "[data-gutter] [data-column-number]",
       ) ?? []) {
         const line = Number(node.dataset.columnNumber);
-        const mark = marks.current.find(
-          (m) => line >= m.start && line <= m.end,
-        );
+        const mark = findLineMark(marks.current, line);
         if (mark) node.dataset.mainChange = mark.kind;
         else delete node.dataset.mainChange;
         if (mark?.top) node.dataset.mainDeletedTop = "";
         else delete node.dataset.mainDeletedTop;
       }
     }
+    finish();
   }, []);
   const schedule = useCallback((text: string) => {
     input.current = text;

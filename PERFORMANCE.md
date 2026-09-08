@@ -256,3 +256,15 @@ On the primary repository, a short native run measured nine index builds at 2–
 `ui.palette-react` measures elapsed time from the open request to the palette's mount layout effect, including React scheduling/render/commit work. `search.dialog-open` measures the synchronous native dialog `showModal()` and input focus calls. The existing `ui.palette-open` finishes after two animation-frame opportunities; it is a presentation proxy, not an OS compositor timestamp. These nested stages must not be added together.
 
 A release-native capture of 20 file-palette opens on the primary repository measured 28.5ms median / 32ms p95 / 56ms maximum for the full proxy. The first open was 56ms; the remaining 19 were 21–32ms. Request-to-layout-effect was 3–5ms (3.5ms median), dialog opening/focus was 0–1ms, index construction was approximately 1ms, and empty-query ranking rounded to 0ms at the clock's resolution. Most elapsed time was therefore after synchronous dialog setup, within the two-frame measurement window. This run does not reproduce a recurring 91ms delay or justify additional index caching solely to optimize opening. It also does not isolate first-frame rendering from frame scheduling/compositing; cold-start and loaded-system repetitions remain needed. No query text or file paths are included in these spans.
+
+## Editor gutter lookup
+
+```sh
+pnpm perf:gutter /tmp/gutter.json
+```
+
+This deterministic CPU benchmark looks up markers for 200 visible lines near the top, middle and bottom of files with 0, 100, 1,000 and 10,000 change ranges. It records five warmups, 30 measured passes and complete output hashes. It excludes DOM traversal, attribute updates, worker diff calculation, syntax highlighting and paint; it is not a typing-latency measurement. `editor.gutter-paint` in native traces measures the full synchronous gutter traversal/decoration pass, which also runs after virtualized editor renders.
+
+Previously each visible line used a linear scan over all change ranges. Unchanged lines scanned the entire list, so even a viewport near the beginning paid for changes far below it. The lookup now binary-searches the first range whose end reaches the line, preserving first-match precedence at overlapping deletion anchors. Pierre's parsed ranges are emitted in file order; tests assert nondecreasing start/end coordinates and compare every line against linear lookup across 100 deterministic insertion/deletion/replacement diffs, plus explicit overlapping boundaries. Existing DOM tests still cover clearing markers, keeping gutter nodes and ignoring stale worker results.
+
+On this machine, the 10,000-range bottom viewport fell from **1.455ms median / 1.917ms p95** to **0.0046ms / 0.0053ms** for lookup alone. The middle viewport fell from 1.009ms to 0.0046ms median. All 12 complete output hashes matched. These synthetic stress results establish improved scaling of marker lookup; native typing and scrolling improvements remain to be measured rather than inferred from the CPU ratio.
