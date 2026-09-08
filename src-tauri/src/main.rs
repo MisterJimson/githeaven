@@ -9,7 +9,7 @@ use serde::Serialize;
 use startup::{startup_milestone, Milestone, Startup};
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -34,6 +34,15 @@ impl Session {
 struct ChangeEvent {
     root: String,
     history: bool,
+}
+
+fn changes_history(path: &Path, git_dir: &Path, common: &Path) -> bool {
+    // Index writes affect status, not refs or commit history. Keep all other
+    // metadata conservative, including HEAD, refs, objects and directory events.
+    if path == git_dir.join("index") || path == common.join("index") {
+        return false;
+    }
+    path.starts_with(git_dir) || path.starts_with(common)
 }
 
 fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatcher, String> {
@@ -84,7 +93,7 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
                         continue;
                     }
                     relevant = true;
-                    history |= path.starts_with(&git_dir) || path.starts_with(&common);
+                    history |= changes_history(&path, &git_dir, &common);
                 }
             }
             if relevant {
@@ -376,6 +385,33 @@ fn main() {
 #[cfg(test)]
 mod session_tests {
     use super::*;
+    #[test]
+    fn index_events_refresh_status_without_reloading_history() {
+        let common = Path::new("repo/.git");
+        for git_dir in [common, Path::new("repo/.git/worktrees/topic")] {
+            assert!(!changes_history(&git_dir.join("index"), git_dir, common));
+            assert!(!changes_history(
+                Path::new("repo/src/index"),
+                git_dir,
+                common
+            ));
+            for path in [
+                git_dir.join("HEAD"),
+                common.join("refs/heads/main"),
+                common.join("packed-refs"),
+                common.join("objects/ab/cd"),
+                common.to_path_buf(),
+                git_dir.to_path_buf(),
+            ] {
+                assert!(changes_history(&path, git_dir, common), "{path:?}");
+            }
+            // A batch containing an index update and a ref update must still
+            // request history, regardless of which event arrives first.
+            assert!([git_dir.join("index"), common.join("refs/heads/main")]
+                .iter()
+                .any(|path| changes_history(path, git_dir, common)));
+        }
+    }
     #[test]
     fn open_sessions_remain_accessible_until_closed() {
         let session = Session::default();

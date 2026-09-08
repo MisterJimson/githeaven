@@ -333,11 +333,15 @@ export function App() {
     const gen = generation.current;
     const indexRevision = stageRevision.current;
     try {
-      const next = await call<Snapshot>("refresh_repository", {
-        root: current.root,
-        limit: limitRef.current,
-        history,
-      });
+      const next = await measureAsync(
+        history ? "git.refresh.history" : "git.refresh.working",
+        () =>
+          call<Snapshot>("refresh_repository", {
+            root: current.root,
+            limit: limitRef.current,
+            history,
+          }),
+      );
       if (generation.current !== gen) return;
       // A refresh started before an index write must never undo its projection.
       if (stageRunning.current || stageRevision.current !== indexRevision) {
