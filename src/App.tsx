@@ -46,6 +46,7 @@ import { startRuntimeCapture } from "./runtimeCapture";
 import {
   clearPerformanceSamples,
   downloadPerformanceReport,
+  startSpan,
 } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type {
@@ -198,9 +199,15 @@ export function App() {
   useEffect(() => (capturing ? startRuntimeCapture() : undefined), [capturing]);
   const [quickOpen, setQuickOpen] = useState<"commands" | "files" | null>(null);
   const paletteTiming = useRef<(() => number | null) | null>(null);
+  const paletteCommitTiming = useRef<(() => void) | null>(null);
   const openQuick = useCallback((mode: "commands" | "files") => {
     paletteTiming.current = startForegroundTiming("ui.palette-open");
+    paletteCommitTiming.current = startSpan("ui.palette-react");
     setQuickOpen(mode);
+  }, []);
+  const paletteCommitted = useCallback(() => {
+    paletteCommitTiming.current?.();
+    paletteCommitTiming.current = null;
   }, []);
   const paletteReady = useCallback(() => {
     paletteTiming.current?.();
@@ -2156,9 +2163,11 @@ export function App() {
           key={`${repo?.root}:${quickOpen}`}
           mode={quickOpen}
           items={quickOpen === "files" ? quickFiles : quickCommands}
+          onCommit={paletteCommitted}
           onReady={paletteReady}
           onClose={() => {
             paletteTiming.current = null;
+            paletteCommitTiming.current = null;
             setQuickOpen(null);
           }}
           onPick={pickQuickItem}

@@ -19,18 +19,22 @@ export function QuickOpen({
   onClose,
   onPick,
   onReady,
+  onCommit,
 }: {
   mode: "commands" | "files";
   items: QuickItem[];
   onClose: () => void;
   onPick: (item: QuickItem) => void;
   onReady?: () => void;
+  onCommit?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const ready = useRef(onReady);
   ready.current = onReady;
+  const committed = useRef(onCommit);
+  committed.current = onCommit;
   const queryTiming = useRef<(() => number | null) | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -52,10 +56,13 @@ export function QuickOpen({
   const end = Math.min(results.length, start + 16);
 
   useLayoutEffect(() => {
+    committed.current?.();
     const previous = document.activeElement as HTMLElement | null;
     const modal = dialog.current!;
+    const finishDialog = startSpan("search.dialog-open");
     modal.showModal();
     input.current?.focus();
+    finishDialog();
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => ready.current?.());
     });

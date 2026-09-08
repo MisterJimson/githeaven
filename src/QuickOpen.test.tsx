@@ -137,6 +137,9 @@ it("records query paint even when results are unchanged and cancels measurement 
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   clearPerformanceSamples();
   const onReady = vi.fn();
+  const onCommit = vi.fn(() => {
+    expect(document.querySelector("dialog")?.hasAttribute("open")).toBe(false);
+  });
   const { unmount } = render(
     <QuickOpen
       mode="files"
@@ -144,8 +147,15 @@ it("records query paint even when results are unchanged and cancels measurement 
       onClose={vi.fn()}
       onPick={vi.fn()}
       onReady={onReady}
+      onCommit={onCommit}
     />,
   );
+  expect(onCommit).toHaveBeenCalledTimes(1);
+  expect(onReady).not.toHaveBeenCalled();
+  expect(
+    performanceReport().summary.find((s) => s.name === "search.dialog-open")
+      ?.count,
+  ).toBe(1);
   act(() => vi.advanceTimersByTime(40));
   expect(onReady).toHaveBeenCalledTimes(1);
   const input = screen.getByRole("combobox");
@@ -155,6 +165,7 @@ it("records query paint even when results are unchanged and cancels measurement 
     performanceReport().summary.find((s) => s.name === "ui.palette-query")
       ?.count,
   ).toBe(1);
+  expect(onCommit).toHaveBeenCalledTimes(1);
   clearPerformanceSamples();
   fireEvent.change(input, { target: { value: "new" } });
   unmount();
