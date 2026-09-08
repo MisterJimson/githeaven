@@ -14,7 +14,8 @@
     "check": "pnpm lint && pnpm format:check && pnpm test && pnpm build && cargo test --manifest-path src-tauri/Cargo.toml",
     "lint": "oxlint --deny-warnings src scripts vite.config.ts",
     "format": "oxfmt --write .",
-    "format:check": "oxfmt --check ."
+    "format:check": "oxfmt --check .",
+    "perf:graph": "node scripts/benchmark-graph.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

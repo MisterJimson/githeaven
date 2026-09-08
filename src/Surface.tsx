@@ -302,7 +302,11 @@ function LiveDiff({
   const started = useRef<{
     version: number;
     finish: () => number | null;
-  } | null>(initial ? { version: 1, finish: startForegroundTiming() } : null);
+  } | null>(
+    initial
+      ? { version: 1, finish: startForegroundTiming("ui.diff-ready") }
+      : null,
+  );
   const measured = useRef(0);
   const { path, source, oid, parent, oldPath } = selection;
 
@@ -310,7 +314,7 @@ function LiveDiff({
     if (deferRefresh) return;
     let active = true;
     setError("");
-    const finish = startForegroundTiming();
+    const finish = startForegroundTiming("ui.diff-ready");
     void cache
       .prepare(root, selection, refresh)
       .then((prepared) => {

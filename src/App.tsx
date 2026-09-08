@@ -42,6 +42,7 @@ import { PierreTree } from "./PierreTree";
 import type { FileSession } from "./Surface";
 import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
+import { downloadPerformanceReport } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type {
   Commit,
@@ -387,7 +388,7 @@ export function App() {
     projectTiming.current = {
       root: path.trim(),
       start: performance.now(),
-      finish: startForegroundTiming(),
+      finish: startForegroundTiming("ui.project-switch"),
       cached: !!saved,
     };
     if (!saved || stageRunning.current) setBusy("Opening repository");
@@ -550,7 +551,7 @@ export function App() {
     if (!root) return;
     const request = ++fileRequest.current;
     const gen = generation.current;
-    const finishOpen = startForegroundTiming();
+    const finishOpen = startForegroundTiming("ui.file-open");
     const started = performance.now();
     setLoadingFile(true);
     setError("");
@@ -830,7 +831,7 @@ export function App() {
     if (next === mode) return;
     navigate(() => {
       const request = ++tabRequest.current;
-      const finishTiming = startForegroundTiming();
+      const finishTiming = startForegroundTiming("ui.tab-switch");
       const measurement = {
         start: performance.now(),
         commit: null as number | null,
@@ -2156,6 +2157,12 @@ export function App() {
         <div className="perf-popover">
           <div className="panel-title">
             <span>Performance notebook</span>
+            <button
+              className="small-button"
+              onClick={downloadPerformanceReport}
+            >
+              Export trace
+            </button>
             <button
               className="icon-button"
               aria-label="Close measurements"

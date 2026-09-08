@@ -49,6 +49,8 @@ Open the `.demo` directory printed by that command. The script leaves an existin
 
 ## Performance and boundaries
 
+See [PERFORMANCE.md](PERFORMANCE.md) for trace capture, repeatable benchmarks, measured optimizations, and the ongoing investigation scope.
+
 React Compiler 1.0 runs through Vite's React Babel plugin in development, tests, and production, targeting React 19. It automatically memoizes compatible components and hooks; existing manual memoization remains in place. Compiler bailouts leave unsupported code unchanged, including the TanStack virtualizer integrations. This reduces eligible React render work; it does not accelerate Git reads or syntax highlighting. See the [React Compiler documentation](https://react.dev/learn/react-compiler/installation).
 
 This is a functional prototype, not a production Git client or a demonstrated replacement for GitKraken on large repositories.

@@ -1,4 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
+import { measureAsync, startSpan } from "./performance";
 import { call } from "./api";
 import type { Selection, Versions } from "./types";
 export interface HighlightPool {
@@ -34,11 +35,18 @@ export class DiffCache {
     work: () => Promise<T>,
     foreground: boolean,
   ): Promise<T> {
+    const finishWait = startSpan(
+      foreground ? "diff.queue.foreground" : "diff.queue.background",
+    );
     return new Promise((resolve, reject) => {
       const job = {
         key,
-        reject,
+        reject: (error: Error) => {
+          finishWait("error");
+          reject(error);
+        },
         run: () => {
+          finishWait();
           this.running++;
           void work()
             .then(resolve, reject)
@@ -112,36 +120,45 @@ export class DiffCache {
         )
           diff = previous.diff;
         else
-          diff = await new Promise<FileDiffMetadata>((resolve, reject) => {
-            const worker = new Worker(
-              new URL("./diff.worker.ts", import.meta.url),
-              { type: "module" },
-            );
-            worker.onmessage = (
-              event: MessageEvent<{
-                result?: FileDiffMetadata;
-                error?: string;
-              }>,
-            ) => {
-              worker.terminate();
-              if (event.data.result)
-                resolve({
-                  ...event.data.result,
-                  cacheKey: `githeaven-ready-diff-${++serial}`,
+          diff = await measureAsync(
+            "diff.parse-worker",
+            () =>
+              new Promise<FileDiffMetadata>((resolve, reject) => {
+                const worker = new Worker(
+                  new URL("./diff.worker.ts", import.meta.url),
+                  { type: "module" },
+                );
+                worker.onmessage = (
+                  event: MessageEvent<{
+                    result?: FileDiffMetadata;
+                    error?: string;
+                  }>,
+                ) => {
+                  worker.terminate();
+                  if (event.data.result)
+                    resolve({
+                      ...event.data.result,
+                      cacheKey: `githeaven-ready-diff-${++serial}`,
+                    });
+                  else
+                    reject(
+                      new Error(event.data.error || "Diff parsing failed"),
+                    );
+                };
+                worker.onerror = (event) => {
+                  worker.terminate();
+                  reject(new Error(event.message || "Diff worker failed"));
+                };
+                worker.postMessage({
+                  path: selection.path,
+                  old: data.old,
+                  new: data.new,
                 });
-              else reject(new Error(event.data.error || "Diff parsing failed"));
-            };
-            worker.onerror = (event) => {
-              worker.terminate();
-              reject(new Error(event.message || "Diff worker failed"));
-            };
-            worker.postMessage({
-              path: selection.path,
-              old: data.old,
-              new: data.new,
-            });
-          });
-        await this.pool.primeDiffHighlightCache(diff);
+              }),
+          );
+        await measureAsync("diff.highlight", () =>
+          this.pool.primeDiffHighlightCache(diff),
+        );
         const value = {
           versions: data,
           diff,

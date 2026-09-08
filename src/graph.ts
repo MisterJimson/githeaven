@@ -38,17 +38,18 @@ export function layoutGraph(commits: Commit[]): GraphRow[] {
           color: i === 0 ? color : nextColor++ % 6,
         });
     });
+    const laneByOid = new Map(lanes.map((entry, index) => [entry.oid, index]));
     const below = before.flatMap((l, i) => {
       if (i === lane)
         return commit.parents.map((oid) => ({
           from: lane,
-          to: lanes.findIndex((l) => l.oid === oid),
-          color: lanes.find((l) => l.oid === oid)!.color,
+          to: laneByOid.get(oid)!,
+          color: lanes[laneByOid.get(oid)!].color,
         }));
       return [
         {
           from: i,
-          to: lanes.findIndex((n) => n.oid === l.oid),
+          to: laneByOid.get(l.oid)!,
           color: l.color,
         },
       ];
