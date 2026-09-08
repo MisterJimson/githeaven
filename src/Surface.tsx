@@ -24,6 +24,7 @@ import { FileCode2, LoaderCircle } from "lucide-react";
 import { DiffCache } from "./DiffCache";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
+import { registerGauge } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type { Change, Selection, Versions } from "./types";
 
@@ -67,6 +68,17 @@ function PreparedDiffs({
   const pool = useWorkerPool();
   const cache = useMemo(() => (pool ? new DiffCache(pool) : null), [pool]);
   useEffect(() => {
+    if (!cache || !pool) return;
+    const removeCache = registerGauge("diff.cache", () => cache.stats());
+    const removePool = registerGauge("diff.workers", () => ({
+      ...pool.getStats(),
+    }));
+    return () => {
+      removeCache();
+      removePool();
+    };
+  }, [cache, pool]);
+  useEffect(() => {
     if (!cache || !root || (!changes && !previews)) return;
     let active = true;
     const candidates: Selection[] = [...(previews ?? [])];
@@ -92,7 +104,7 @@ function PreparedDiffs({
     const timer = setTimeout(() => {
       void (async () => {
         // One speculative diff at a time; leave the second highlight worker free for clicks.
-        for (const candidate of candidates.slice(0, 24)) {
+        for (const candidate of candidates.slice(0, 8)) {
           if (!active) break;
           try {
             await cache.prepare(

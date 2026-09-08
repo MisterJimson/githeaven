@@ -16,7 +16,8 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "perf:graph": "node scripts/benchmark-graph.mjs",
-    "perf:backend": "cargo run --release --manifest-path src-tauri/Cargo.toml --example performance --"
+    "perf:backend": "cargo run --release --manifest-path src-tauri/Cargo.toml --example performance --",
+    "perf:resources": "node scripts/profile-resources.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

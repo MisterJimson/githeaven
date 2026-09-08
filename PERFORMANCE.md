@@ -88,3 +88,29 @@ Standalone status was about 69ms, file discovery 61–63ms, and serialization 0.
 Blob loading now resolves the exact entry from the index/tree listing, then requests its object ID through one `git cat-file --batch` process. The header supplies the type and size; the reader checks the 2 MB cap before allocating the content buffer and kills/reaps the process on rejection. This removes the separate `cat-file -s` subprocess while retaining normal missing-file behavior and propagating real errors. Object IDs, rather than filenames, go through the line protocol so tabs/newlines in filenames remain valid.
 
 The same native primary-repository benchmark measured working-file diff inputs at **28.56ms median**, versus **49.17ms** before this change (15 warm samples, macOS arm64 release build). This isolates backend inputs; worker parsing, syntax highlighting, and native display latency remain separate measurements. Blob-read tests cover empty/missing files, invalid revisions and object types, unusual filenames, binary data, oversize rejection, and successful reads after a rejected request. A repeat on the final code measured 30.41ms median (40.90ms p95); an additional test verifies unresolved index stages remain errors. No persistent subprocess or blob cache was added.
+
+## Native resource and UI capture
+
+```sh
+pnpm perf:resources /tmp/githeaven-resources.json
+```
+
+The macOS collector uses `launchctl` coalition bundle IDs to associate Githeaven with its WebContent, GPU, and networking processes, even when their parent is `launchd`. It then obtains RSS/CPU snapshots from `ps` and physical/peak footprints from Apple's `footprint` tool. It writes only names, PIDs, numeric usage, and attribution/completeness information; it does not export launchctl domain contents or process arguments. Failed attribution or missing footprint data marks the report incomplete. Physical footprint and RSS are different metrics; summing RSS can double-count shared memory. CPU percentages are `ps` snapshots, not an interval-based CPU benchmark. This collector is currently macOS-only.
+
+The existing long-lived primary-repository session measured **747.3 MiB combined physical footprint**, with about 686 MiB attributed to WebContent. The Rust app alone used about 32 MiB. This identifies a memory investigation target; it does not prove a leak or an optimization. The session had 38 working changes and two project tabs. Do not compare it directly to a fresh launch.
+
+In the performance notebook, **Start capture** enables a foreground animation-frame probe and input-to-two-frame-opportunity timings. It continues when the notebook closes; **Stop capture** removes listeners and cancels outstanding frame callbacks. Only frame intervals above 50ms are stored, with observed/slow-frame counters. Blurs and visibility changes reset the interval; they are not counted as UI stalls. The probe is off by default and consumes no continuous animation frames until enabled. Frame gaps show stalls, not their cause or physical display latency.
+
+Trace schema v2 also includes current diff-cache entry/source-byte/queue counts, Pierre worker/cache occupancy, and diff preparation hit/miss/shared-request counters. Source bytes exclude AST and renderer memory, so use the native resource report alongside these gauges. Exports use a native save dialog in Tauri and the browser download mechanism only in browser preview. A native validation found the previous blob-download path blocked in WebKit's download-destination sandbox call; the native dialog bypasses that path.
+
+### Bound speculative diff preparation
+
+A live primary-repository trace showed repeated preparation churn: 24 speculative candidates competed for a 6 MiB source cache that held only 16 of them. More than 1,000 preparations accumulated during the longer baseline session. The preloader now attempts at most eight candidates per pass and defers speculative inputs above 128 KiB of estimated source storage. Explicit selection retains the existing 2 MB per-file limit and bypasses the speculative cap, including when a click promotes an in-flight background request. Tests cover both direct selection and promotion.
+
+Native observations with 38 working changes, release builds on the same Mac:
+
+- Earlier fresh-session snapshot: 16 source entries / 6,103,706 bytes; 24 syntax-cache entries; 617.7 MiB combined physical footprint.
+- After bounded prefetch and a short diff/tab navigation sequence: 8 source entries / 233,402 bytes; 8 syntax-cache entries; 527.7 MiB combined footprint.
+- The repeated two-file navigation produced 8ms and 11ms diff-ready samples, versus one 81ms sample in the baseline. Edit/Git transitions remained 33–77ms in the short post-change capture.
+
+These are live observations with different session durations and background activity, not a controlled memory/latency benchmark or a leak determination. They show reduced retained speculative content and a direction for further measurement. Native trace export was verified through the save dialog and the resulting JSON inspected. Capture was stopped after verification. Raw traces/resource snapshots remain in the local temporary directory.

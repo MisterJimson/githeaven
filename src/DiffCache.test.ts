@@ -60,3 +60,37 @@ it("bounds retained diffs and isolates staged and working content", async () => 
     cache.peek("repo", { path: "24.ts", source: "index" }),
   ).toBeUndefined();
 });
+it("defers large speculative diffs but always prepares explicit selections", async () => {
+  vi.mocked(call).mockResolvedValue({
+    old: "x".repeat(128 * 1024),
+    new: "new",
+    elapsed_ms: 1,
+  });
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  await expect(cache.prepare("repo", selection, 1, false)).rejects.toThrow(
+    "deferred",
+  );
+  expect(pool.primeDiffHighlightCache).not.toHaveBeenCalled();
+  await cache.prepare("repo", selection, 1, true);
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+});
+it("promotes an in-flight large prefetch when clicked", async () => {
+  let finish!: (value: unknown) => void;
+  vi.mocked(call).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  const background = cache.prepare("repo", selection, 1, false);
+  const selected = cache.prepare("repo", selection, 1, true);
+  finish({ old: "x".repeat(128 * 1024), new: "new", elapsed_ms: 1 });
+  expect(await selected).toBe(await background);
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+});

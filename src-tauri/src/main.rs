@@ -310,12 +310,38 @@ async fn create_commit(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn export_performance_report(app: tauri::AppHandle, report: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if report.len() > 2 * 1024 * 1024 {
+        return Err("Performance report exceeds 2 MB.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .add_filter("JSON report", &["json"])
+            .set_directory(std::env::temp_dir())
+            .set_file_name("githeaven-performance.json")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = file.into_path().map_err(|e| e.to_string())?;
+        std::fs::write(path, report).map_err(|e| e.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Session::default())
         .invoke_handler(tauri::generate_handler![
+            export_performance_report,
             open_repository,
             close_repository,
             commit_avatar,

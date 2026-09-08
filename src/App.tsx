@@ -42,6 +42,7 @@ import { PierreTree } from "./PierreTree";
 import type { FileSession } from "./Surface";
 import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
+import { startRuntimeCapture } from "./runtimeCapture";
 import { downloadPerformanceReport } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type {
@@ -190,6 +191,8 @@ export function App() {
   const [message, setMessage] = useState("");
   const [description, setDescription] = useState("");
   const [showPerf, setShowPerf] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  useEffect(() => (capturing ? startRuntimeCapture() : undefined), [capturing]);
   const [quickOpen, setQuickOpen] = useState<"commands" | "files" | null>(null);
   const [times, setTimes] = useState<number[]>([]);
   const [startupPath] = useState(
@@ -2159,7 +2162,16 @@ export function App() {
             <span>Performance notebook</span>
             <button
               className="small-button"
-              onClick={downloadPerformanceReport}
+              aria-pressed={capturing}
+              onClick={() => setCapturing(!capturing)}
+            >
+              {capturing ? "Stop capture" : "Start capture"}
+            </button>
+            <button
+              className="small-button"
+              onClick={() => {
+                void downloadPerformanceReport().catch(report);
+              }}
             >
               Export trace
             </button>

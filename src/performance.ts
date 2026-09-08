@@ -1,3 +1,4 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 export interface PerfSample {
   name: string;
   start: number;
@@ -34,7 +35,11 @@ export function performanceReport() {
     groups.set(sample.name, group);
   }
   return {
-    version: 1,
+    version: 2,
+    counters: Object.fromEntries(counters),
+    gauges: Object.fromEntries(
+      [...gauges].map(([name, read]) => [name, read()]),
+    ),
     capturedAt: new Date().toISOString(),
     capacity,
     summary: [...groups].map(([name, group]) => {
@@ -55,8 +60,15 @@ export function performanceReport() {
 }
 export function clearPerformanceSamples() {
   samples.length = 0;
+  counters.clear();
 }
-export function downloadPerformanceReport() {
+export async function downloadPerformanceReport() {
+  if (isTauri()) {
+    await invoke("export_performance_report", {
+      report: JSON.stringify(performanceReport(), null, 2),
+    });
+    return;
+  }
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(performanceReport(), null, 2)], {
       type: "application/json",
@@ -82,4 +94,22 @@ export async function measureAsync<T>(
     finish("error");
     throw error;
   }
+}
+
+const counters = new Map<string, number>();
+const gauges = new Map<
+  string,
+  () => Record<string, number | string | boolean>
+>();
+export function countEvent(name: string) {
+  counters.set(name, (counters.get(name) ?? 0) + 1);
+}
+export function registerGauge(
+  name: string,
+  read: () => Record<string, number | string | boolean>,
+) {
+  gauges.set(name, read);
+  return () => {
+    if (gauges.get(name) === read) gauges.delete(name);
+  };
 }

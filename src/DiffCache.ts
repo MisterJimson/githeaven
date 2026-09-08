@@ -1,5 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { measureAsync, startSpan } from "./performance";
+import { measureAsync, startSpan, countEvent } from "./performance";
 import { call } from "./api";
 import type { Selection, Versions } from "./types";
 export interface HighlightPool {
@@ -22,7 +22,7 @@ export class DiffCache {
   private entries = new Map<string, PreparedDiff>();
   private pending = new Map<
     string,
-    { refresh: number; result: Promise<PreparedDiff> }
+    { refresh: number; foreground: boolean; result: Promise<PreparedDiff> }
   >();
   private running = 0;
   private jobs: {
@@ -66,6 +66,18 @@ export class DiffCache {
     });
   }
   constructor(private pool: HighlightPool) {}
+  stats() {
+    return {
+      entries: this.entries.size,
+      sourceBytes: [...this.entries.values()].reduce(
+        (sum, item) => sum + item.bytes,
+        0,
+      ),
+      pending: this.pending.size,
+      running: this.running,
+      queued: this.jobs.length,
+    };
+  }
   peek(root: string, selection: Selection) {
     const key = diffKey(root, selection);
     const value = this.entries.get(key);
@@ -89,15 +101,25 @@ export class DiffCache {
   ): Promise<PreparedDiff> {
     const key = diffKey(root, selection);
     const ready = this.peek(root, selection);
-    if (ready?.refresh === refresh) return ready;
+    if (ready?.refresh === refresh) {
+      countEvent("diff.prepare.cache-hit");
+      return ready;
+    }
     const pending = this.pending.get(key);
     if (pending?.refresh === refresh) {
+      countEvent("diff.prepare.shared-request");
+      if (foreground) pending.foreground = true;
       const queued = this.jobs.findIndex((job) => job.key === key);
       if (foreground && queued > 0)
         this.jobs.unshift(...this.jobs.splice(queued, 1));
       return pending.result;
     }
-    const task = { refresh, result: null as unknown as Promise<PreparedDiff> };
+    countEvent("diff.prepare.cache-miss");
+    const task = {
+      refresh,
+      foreground,
+      result: null as unknown as Promise<PreparedDiff>,
+    };
     task.result = this.schedule(
       key,
       async () => {
@@ -109,6 +131,15 @@ export class DiffCache {
           parent: selection.parent ?? null,
           oldPath: selection.oldPath ?? null,
         });
+        // Keep speculative work small enough that nearby files remain resident.
+        // A click can promote an in-flight request and bypass this background budget.
+        if (
+          !task.foreground &&
+          2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)) > 128 * 1024
+        ) {
+          countEvent("diff.prepare.skipped-large-prefetch");
+          throw new Error("Large diff deferred until selected.");
+        }
         if (data.old === null && data.new === null)
           throw new Error("This file no longer exists in this comparison.");
         const previous = this.entries.get(key);
