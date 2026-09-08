@@ -253,6 +253,101 @@ it("returns to folder selection after a failed restore and remembers the next su
   expect(call).toHaveBeenCalledTimes(2);
 });
 
+it("measures save completion without discarding edits typed during the write", async () => {
+  const editor = await openEditor();
+  clearPerformanceSamples();
+  const write = deferred();
+  vi.mocked(call).mockImplementation((command) => {
+    if (command === "save_file") return write.promise;
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  fireEvent.change(editor, { target: { value: "saved revision" } });
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  expect(performanceReport().samples.some((s) => s.name === "save.total")).toBe(
+    false,
+  );
+  fireEvent.change(editor, { target: { value: "newer draft" } });
+  await act(async () => write.resolve(undefined));
+  expect((editor as HTMLTextAreaElement).value).toBe("newer draft");
+  expect(
+    performanceReport()
+      .samples.filter((s) => s.name === "save.total")
+      .map((s) => s.outcome),
+  ).toEqual(["ok"]);
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await waitFor(() =>
+    expect(call).toHaveBeenLastCalledWith(
+      "save_file",
+      expect.objectContaining({
+        original: "saved revision",
+        contents: "newer draft",
+      }),
+    ),
+  );
+});
+
+it("records save rendering after two frames and cancels unfinished probes on unmount", async () => {
+  const editor = await openEditor();
+  clearPerformanceSamples();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const frames = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+    (callback) => {
+      frames.set(++next, callback);
+      return next;
+    },
+  );
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+  const advance = () =>
+    act(() => {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      callbacks.forEach((callback) => callback(performance.now()));
+    });
+  const renderedSaves = () =>
+    performanceReport().samples.filter((s) => s.name === "ui.save-ready");
+  fireEvent.change(editor, { target: { value: "first save" } });
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await screen.findByText("File saved");
+  expect(renderedSaves()).toHaveLength(0);
+  advance();
+  expect(renderedSaves()).toHaveLength(0);
+  advance();
+  expect(renderedSaves()).toHaveLength(1);
+  fireEvent.change(editor, { target: { value: "second save" } });
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await waitFor(() =>
+    expect(
+      performanceReport().samples.filter((s) => s.name === "save.total"),
+    ).toHaveLength(2),
+  );
+  cleanup();
+  advance();
+  advance();
+  expect(renderedSaves()).toHaveLength(1);
+});
+
+it("records failed saves separately and preserves the draft for retry", async () => {
+  const editor = await openEditor();
+  clearPerformanceSamples();
+  fireEvent.change(editor, { target: { value: "keep my draft" } });
+  vi.mocked(call).mockRejectedValueOnce(new Error("File changed on disk"));
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await screen.findByText(/File changed on disk/);
+  expect((editor as HTMLTextAreaElement).value).toBe("keep my draft");
+  expect(
+    performanceReport()
+      .samples.filter((s) => s.name === "save.total")
+      .map((s) => s.outcome),
+  ).toEqual(["error"]);
+  expect(
+    performanceReport().samples.some((s) => s.name === "ui.save-ready"),
+  ).toBe(false);
+});
+
 it("reopens saved contents when switching away from and back to the editor", async () => {
   const editor = await openEditor();
   fireEvent.change(editor, { target: { value: "saved contents" } });

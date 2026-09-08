@@ -289,11 +289,27 @@ export function App() {
     else action();
   };
   const report = (e: unknown) => setError(errorText(e));
+  const [savePaint, setSavePaint] = useState<{
+    finish: () => number | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!savePaint) return;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(savePaint.finish);
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [savePaint]);
   const save = useCallback(async () => {
     const current = fileRef.current;
     const root = repoRef.current?.root;
     if (!current || !root) return false;
     const text = draft.current;
+    const finish = startSpan("save.total");
+    const finishPaint = startForegroundTiming("ui.save-ready");
     setBusy("Saving");
     setError("");
     try {
@@ -308,8 +324,11 @@ export function App() {
       setExternal(false);
       setFile((f) => (f ? { ...f, original: text, contents: text } : f));
       setNotice("File saved");
+      setSavePaint({ finish: finishPaint });
+      finish();
       return !dirtyRef.current;
     } catch (e) {
+      finish("error");
       report(e);
       return false;
     } finally {
