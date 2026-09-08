@@ -164,7 +164,11 @@ async function openEditor() {
   await openWorkspace();
   fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
   fireEvent.click(await screen.findByRole("button", { name: "sample.txt" }));
-  return screen.findByLabelText("Test editor");
+  const editor = await screen.findByLabelText("Test editor");
+  await waitFor(() =>
+    expect((editor as HTMLTextAreaElement).value).toBe("original contents"),
+  );
+  return editor;
 }
 
 const restoredSnapshot: Snapshot = {
@@ -203,6 +207,16 @@ it("opens the last repository once on startup without showing the folder picker"
       path: "/sample/nested",
     }),
   );
+  await waitFor(() =>
+    expect(
+      performanceReport().samples.some(
+        (sample) => sample.name === "bundle.surface",
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByRole("status").textContent).toContain(
+    "Opening your repository",
+  );
   await act(async () => finish(restoredSnapshot));
   expect(
     await screen.findByRole("button", { name: /^Git \(\d+\)$/ }),
@@ -238,6 +252,7 @@ it("reopens saved contents when switching away from and back to the editor", asy
   const editor = await openEditor();
   fireEvent.change(editor, { target: { value: "saved contents" } });
   fireEvent.click(screen.getByRole("button", { name: /Save ⌘S/ }));
+  await screen.findByText("File saved");
   await waitFor(() =>
     expect(
       (screen.getByRole("button", { name: /Save ⌘S/ }) as HTMLButtonElement)

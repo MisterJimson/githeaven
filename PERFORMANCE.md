@@ -480,3 +480,20 @@ A macOS arm64 release restart with the primary repository and two saved project 
 The frontend's `open_repository` invocation was 163ms. The page reported `ready_in_foreground: false`, so this run is **not** a verified foreground launch-to-interactive sample. It is one fresh-process observation with warm OS caches and a live primary repository (79 working changes); no percentile or improvement claim is warranted. Stage attribution suggests further investigation of work before frontend initialization and between native repository completion and the rendered checkpoint. Foreground window activation, repeated controlled launch distributions and per-stage optimization remain outstanding. Raw local artifact: `githeaven-startup-1.json` in the system temporary directory.
 
 A Rust test verifies monotonic capture, immutable first milestones, the first-ready outcome rule and numeric serialization. A frontend test verifies that an unmounted/unfinished rendering probe cannot signal readiness, two frames are required, and duplicate or alternate later outcomes are ignored. Full validation and a native release build pass.
+
+### Overlap workspace module loading with repository open
+
+The shared lazy workspace import now records a single `bundle.surface` span and is started immediately after an uncached `open_repository` invocation. Its module promise is shared by the provider, editor and diff components. Cached repository switches keep their synchronous path; welcome-only startup still does not load the workspace module. A deferred-repository test verifies that module loading completes while the repository request is outstanding and the loading screen remains visible.
+
+Native release traces on the same Mac with the primary repository and two saved tabs showed:
+
+| Frontend-clock operation | Before           | After            |
+| ------------------------ | ---------------- | ---------------- |
+| Repository invocation    | 82–227ms (145ms) | 86–248ms (162ms) |
+| Workspace module import  | 241–292ms (51ms) | 87–135ms (48ms)  |
+
+The module load now fits entirely inside the native request instead of following it. Native watcher-completion-to-rendered-checkpoint time decreased from 176.62ms to 137.44ms. Total native-entry-to-rendered-checkpoint time was essentially unchanged in this pair, **739.27ms before / 739.76ms after**, because earlier setup and repository stages varied. Both checkpoints reported `ready_in_foreground: false`; this remains rendering-stage evidence, not a verified foreground launch-to-interactive speedup. The live repository had 79 working changes at launch and continued changing afterward. Repeated controlled process-launch distributions remain necessary.
+
+The cached-switch test caught an experimental extra await on the cached path; that await was removed before the final build. An existing save/reopen test also exposed premature test readiness: a renamed mock-editor label could precede its content synchronization, and a disabled Save button could mean the save was still in progress. The helper now waits for initial contents, and the save/reopen test waits for the explicit saved result before switching views. This tightens the tested sequence without adding timing thresholds or changing editor behavior. Other previously observed test flakes are not declared resolved.
+
+Full validation passes (122 frontend tests, 16 Rust tests), and the release app restores its graph, branches and composer. Local artifacts: `githeaven-module-before.json` and `githeaven-module-after.json` in the system temporary directory. The performance notebook was closed and the primary workspace left open.

@@ -48,6 +48,7 @@ import {
   clearPerformanceSamples,
   downloadPerformanceReport,
   startSpan,
+  measureAsync,
 } from "./performance";
 import { startForegroundTiming } from "./timing";
 import type {
@@ -65,14 +66,17 @@ const emptyDetails: Details = {
   parent: null,
   elapsed_ms: 0,
 };
+let surfaceModule: Promise<typeof import("./Surface")> | undefined;
+const loadSurface = () =>
+  (surfaceModule ??= measureAsync("bundle.surface", () => import("./Surface")));
 const PierreProvider = lazy(() =>
-  import("./Surface").then((m) => ({ default: m.PierreProvider })),
+  loadSurface().then((m) => ({ default: m.PierreProvider })),
 );
 const DiffSurface = lazy(() =>
-  import("./Surface").then((m) => ({ default: m.DiffSurface })),
+  loadSurface().then((m) => ({ default: m.DiffSurface })),
 );
 const EditorSurface = lazy(() =>
-  import("./Surface").then((m) => ({ default: m.EditorSurface })),
+  loadSurface().then((m) => ({ default: m.EditorSurface })),
 );
 const layerStyle = (visible: boolean) => ({
   opacity: visible ? 1 : 0,
@@ -419,11 +423,15 @@ export function App() {
     const gen = ++generation.current;
     try {
       if (stageRunning.current) await stageCompletion.current;
-      const next =
-        saved?.snapshot ??
-        (await call<Snapshot>("open_repository", {
+      let next = saved?.snapshot;
+      if (!next) {
+        const opening = call<Snapshot>("open_repository", {
           path: path.trim(),
-        }));
+        });
+        // Start the native request first, then load the workspace while Git runs.
+        void loadSurface().catch(() => {});
+        next = await opening;
+      }
       if (generation.current !== gen) return;
       const cached = projectViews.current.get(next.root);
       if (projectTiming.current) projectTiming.current.root = next.root;
