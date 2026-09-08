@@ -385,3 +385,23 @@ Local artifacts: `githeaven-editor-viewport-native.json` and `githeaven-editor-v
 Native checking also exposed duplicate completion of retained editor timing callbacks: the trace suppressed duplicate samples but the notebook accepted a newly inflated duration. Foreground timing now returns null after its first completion, with a regression assertion covering a much later second call.
 
 Remaining: cold grammar/startup measurements; repeatable native opening distributions; long-line and non-TypeScript coverage; distant-jump latency while prefix checkpoints are still cold; large-file scroll behavior and memory. Viewport coloring does not remove plain full-file AST allocation or the existing approximately 800ms scattered-change marker computation. A native end-to-start jump traversed intermediate viewports slowly and needs separate attribution before claiming large-file navigation is instant.
+
+### Editor navigation CPU benchmark
+
+```sh
+pnpm perf:editor-navigation /tmp/editor-navigation.json
+```
+
+This runs the pinned editor tokenizer directly with a 60-line viewport. Each of three warmups and twenty measured iterations constructs a fresh document/tokenizer and visits the start, the previously unseen end, the same end again, and the start again. The TypeScript grammar is warm; no background prebuild runs. Fixtures include multiline comments across viewports. Every viewport's per-character colors are checked against full-file Shiki output outside the clock, and output hashes are retained. Document construction, DOM, native scrolling, IPC and marker workers are excluded. Node/platform/architecture and highlighter initialization accompany raw samples.
+
+Same-machine CPU results:
+
+|  Lines | Initial viewport median | Unseen end median / p95 | Cached end median | Return to start median |
+| -----: | ----------------------: | ----------------------: | ----------------: | ---------------------: |
+|  1,000 |                  1.79ms |         28.76 / 46.73ms |            1.92ms |                 1.78ms |
+| 10,000 |                  1.72ms |       295.65 / 369.12ms |            1.89ms |                 1.75ms |
+| 30,000 |                  1.72ms |   1,030.59 / 1,589.55ms |            1.92ms |                 1.75ms |
+
+All 276 viewport checks matched full-file highlighting (23 iterations × four viewports × three sizes). The initial viewport cost remains bounded in this workload, but the first distant jump synchronously builds preceding grammar state. The viewport opening optimization defers that work; it does not eliminate it. Background checkpoint preparation or worker-backed state computation needs evaluation with input responsiveness, total CPU and memory considered together.
+
+The earlier slow native return from the end cannot be attributed solely to tokenizer CPU: this benchmark's return to the start stays below 2ms median even at 30,000 lines. Inspection shows editor document-boundary commands use caret `scrollIntoView`, while CodeView maintains its own virtualized/paged scroll model. Native navigation-to-settled-viewport measurement is needed to distinguish caret/scroll coordination from rendering cost before changing behavior. Local raw artifact: `/tmp/githeaven-editor-navigation.json`.

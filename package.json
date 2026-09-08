@@ -26,7 +26,8 @@
     "perf:search": "node scripts/benchmark-search.mjs",
     "perf:gutter": "node scripts/benchmark-gutter.mjs",
     "perf:editor-changes": "node scripts/benchmark-editor-changes.mjs",
-    "perf:editor-open": "node scripts/benchmark-editor-open.mjs"
+    "perf:editor-open": "node scripts/benchmark-editor-open.mjs",
+    "perf:editor-navigation": "node scripts/benchmark-editor-navigation.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
