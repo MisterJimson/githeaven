@@ -404,10 +404,7 @@ kbd {
   overflow: hidden;
   flex-shrink: 0;
 }
-.history-columns > span:first-child {
-  padding-left: 12px;
-}
-.history-columns > span:nth-child(2) {
+.history-columns > span {
   padding-left: 12px;
 }
 .history-scroll {
@@ -448,7 +445,7 @@ kbd {
   display: flex;
   gap: 7px;
   align-items: center;
-  padding-right: 14px;
+  padding: 0 14px 0 12px;
 }
 .commit-subject > span:last-child {
   overflow: hidden;
