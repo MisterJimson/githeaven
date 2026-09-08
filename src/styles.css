@@ -1812,3 +1812,8 @@ kbd {
   font-size: 10px;
   overflow: auto;
 }
+
+.ref-connector.checked-out {
+  height: 3px;
+  opacity: 1;
+}

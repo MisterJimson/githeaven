@@ -247,6 +247,10 @@ export const History = memo(function History({
                 .toLowerCase()
                 .includes(query);
             const commitRefs = refMap.get(commit.oid) ?? [];
+            const checkedOut =
+              commitRefs.some(
+                (ref) => ref.kind === "local" && ref.name === branch,
+              ) && commit.oid === head;
             const rowColor = colors[row.color];
             const isSelected = isWorking
               ? workingSelected
@@ -326,7 +330,7 @@ export const History = memo(function History({
                   {commitRefs.length > 0 && (
                     <span
                       aria-hidden="true"
-                      className="ref-connector"
+                      className={`ref-connector ${checkedOut ? "checked-out" : ""}`}
                       style={{ background: rowColor }}
                     />
                   )}
@@ -341,7 +345,8 @@ export const History = memo(function History({
                     <path
                       d={`M 0 ${GRAPH_ROW_CENTER} H ${22 + row.lane * 16}`}
                       stroke={rowColor}
-                      opacity="0.6"
+                      opacity={checkedOut ? 1 : 0.6}
+                      strokeWidth={checkedOut ? 3 : 1.4}
                     />
                   )}
                   {row.above.map((e, i) => (
