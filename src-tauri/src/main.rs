@@ -10,7 +10,7 @@ use startup::{startup_milestone, Milestone, Startup};
 use std::{
     collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 use tauri::{Emitter, Manager, State};
@@ -57,14 +57,76 @@ fn watch_category(path: &Path, git_dir: &Path, common: &Path) -> &'static str {
     }
 }
 
+#[cfg(test)]
 fn changes_history(path: &Path, git_dir: &Path, common: &Path) -> bool {
     !matches!(watch_category(path, git_dir, common), "worktree" | "index")
 }
 
+// Merge before queueing: at most six category labels and one wake-up are
+// retained, regardless of how many raw paths arrive during the debounce window.
+fn queue_watch_categories(
+    tx: &std::sync::mpsc::SyncSender<()>,
+    pending: &Mutex<BTreeSet<&'static str>>,
+    categories: BTreeSet<&'static str>,
+) {
+    if categories.is_empty() {
+        return;
+    }
+    pending.lock().unwrap().extend(categories);
+    // A full channel already has a wake-up for the merged pending categories.
+    let _ = tx.try_send(());
+}
+
+fn event_categories(
+    event: notify::Event,
+    root: &Path,
+    git_dir: &Path,
+    common: &Path,
+) -> BTreeSet<&'static str> {
+    let mut categories = BTreeSet::new();
+    if matches!(event.kind, notify::EventKind::Access(_)) {
+        return categories;
+    }
+    for path in event.paths {
+        if path.extension().is_some_and(|e| e == "lock") {
+            continue;
+        }
+        let rel = path.strip_prefix(root).unwrap_or(&path);
+        if rel.components().any(|c| {
+            ["node_modules", "target", "dist", ".next"]
+                .iter()
+                .any(|x| c.as_os_str() == *x)
+        }) {
+            continue;
+        }
+        categories.insert(watch_category(&path, git_dir, common));
+    }
+    categories
+}
+
 fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatcher, String> {
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let pending = Arc::new(Mutex::new(BTreeSet::new()));
+    let callback_pending = pending.clone();
+    let callback_root = root.clone();
+    let directories = Arc::new(OnceLock::<(PathBuf, PathBuf)>::new());
+    let callback_directories = directories.clone();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        let _ = tx.send(event);
+        if let Ok(event) = event {
+            let categories = if let Some((git_dir, common)) = callback_directories.get() {
+                event_categories(event, &callback_root, git_dir, common)
+            } else {
+                // Subscribe to the root before resolving Git directories, as
+                // before. Early relevant events conservatively request history.
+                let early = event_categories(event, &callback_root, &callback_root, &callback_root);
+                if early.is_empty() {
+                    early
+                } else {
+                    BTreeSet::from(["metadata"])
+                }
+            };
+            queue_watch_categories(&tx, &callback_pending, categories);
+        }
     })
     .map_err(|e| e.to_string())?;
     watcher
@@ -78,6 +140,7 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
         )?
         .trim(),
     );
+    let _ = directories.set((git_dir.clone(), common.clone()));
     for dir in [&git_dir, &common] {
         if !dir.starts_with(&root) {
             watcher
@@ -86,35 +149,13 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
         }
     }
     std::thread::spawn(move || {
-        while let Ok(first) = rx.recv() {
-            let mut events = vec![first];
+        while rx.recv().is_ok() {
             std::thread::sleep(Duration::from_millis(120));
-            events.extend(rx.try_iter());
-            let mut relevant = false;
-            let mut history = false;
-            let mut categories = BTreeSet::new();
-            for event in events.into_iter().flatten() {
-                if matches!(event.kind, notify::EventKind::Access(_)) {
-                    continue;
-                }
-                for path in event.paths {
-                    if path.extension().is_some_and(|e| e == "lock") {
-                        continue;
-                    }
-                    let rel = path.strip_prefix(&root).unwrap_or(&path);
-                    if rel.components().any(|c| {
-                        ["node_modules", "target", "dist", ".next"]
-                            .iter()
-                            .any(|x| c.as_os_str() == *x)
-                    }) {
-                        continue;
-                    }
-                    relevant = true;
-                    history |= changes_history(&path, &git_dir, &common);
-                    categories.insert(watch_category(&path, &git_dir, &common));
-                }
-            }
-            if relevant {
+            let categories = std::mem::take(&mut *pending.lock().unwrap());
+            if !categories.is_empty() {
+                let history = categories
+                    .iter()
+                    .any(|category| !matches!(*category, "worktree" | "index"));
                 let _ = app.emit(
                     "repo-changed",
                     ChangeEvent {
@@ -404,6 +445,66 @@ fn main() {
 #[cfg(test)]
 mod session_tests {
     use super::*;
+    #[test]
+    fn watcher_bursts_retain_one_wakeup_and_union_all_categories() {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let pending = Mutex::new(BTreeSet::new());
+        let labels = ["worktree", "index", "head", "refs", "objects", "metadata"];
+        for index in 0..100_000 {
+            queue_watch_categories(
+                &tx,
+                &pending,
+                BTreeSet::from([labels[index % labels.len()]]),
+            );
+        }
+        assert_eq!(rx.try_iter().count(), 1);
+        assert_eq!(*pending.lock().unwrap(), BTreeSet::from(labels));
+    }
+    #[test]
+    fn watcher_updates_survive_debounce_and_drain_boundaries() {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let pending = Mutex::new(BTreeSet::new());
+        queue_watch_categories(&tx, &pending, BTreeSet::from(["index"]));
+        rx.recv().unwrap(); // Consumer begins its debounce window.
+        queue_watch_categories(&tx, &pending, BTreeSet::from(["objects"]));
+        queue_watch_categories(&tx, &pending, BTreeSet::from(["refs"]));
+        assert_eq!(
+            std::mem::take(&mut *pending.lock().unwrap()),
+            BTreeSet::from(["index", "objects", "refs"])
+        );
+        // The queued wake-up is still full when a new event follows the drain.
+        queue_watch_categories(&tx, &pending, BTreeSet::from(["head"]));
+        rx.recv().unwrap();
+        assert_eq!(
+            std::mem::take(&mut *pending.lock().unwrap()),
+            BTreeSet::from(["head"])
+        );
+        queue_watch_categories(&tx, &pending, BTreeSet::new());
+        assert!(rx.try_recv().is_err());
+        drop(tx);
+        assert!(rx.recv().is_err()); // Dropping the watcher still ends the thread.
+    }
+    #[test]
+    fn ignored_events_do_not_enter_the_pending_watcher_batch() {
+        let root = Path::new("repo");
+        let git_dir = root.join(".git");
+        let event = notify::Event::new(notify::EventKind::Any)
+            .add_path(root.join("node_modules/a.js"))
+            .add_path(root.join("target/output"))
+            .add_path(git_dir.join("index.lock"));
+        assert!(event_categories(event, root, &git_dir, &git_dir).is_empty());
+        let access = notify::Event::new(notify::EventKind::Access(notify::event::AccessKind::Any))
+            .add_path(root.join("source.txt"));
+        assert!(event_categories(access, root, &git_dir, &git_dir).is_empty());
+        let mixed = notify::Event::new(notify::EventKind::Any)
+            .add_path(git_dir.join("index"))
+            .add_path(git_dir.join("refs/heads/topic"))
+            .add_path(root.join("source.txt"));
+        assert_eq!(
+            event_categories(mixed, root, &git_dir, &git_dir),
+            BTreeSet::from(["index", "refs", "worktree"])
+        );
+    }
     #[test]
     fn watcher_categories_expose_only_fixed_labels() {
         let common = Path::new("repo/.git");
