@@ -417,3 +417,18 @@ With the corrected probe, returning from the end of the 30,000-line fixture time
 Native verification of the accepted change recorded six return-to-start samples of **50–78ms** (58ms median), with the first row and caret visible immediately in the screenshot. Five repeated cached end jumps measured **51–89ms** (64ms median). The first end jump still cost **887ms**, consistent with the previously identified cold grammar-state prefix work; this fix does not eliminate that cost. An additional end jump after an edit/undo measured 87ms. The small samples are not p95 estimates. No trace samples were discarded.
 
 Pasted test comments landed at the first and final document positions and each undo returned to the saved state. All three fixture disk hashes match the original manifest; the fixture tab was closed and the primary repository restored. Native artifacts in the system temporary directory: `githeaven-jump-baseline.json` and `githeaven-jump-after.json`. Native Linux/Windows verification, selection-extension performance and cold-prefix responsiveness remain outstanding.
+
+### CPU attribution for cold navigation
+
+```sh
+node --cpu-prof --cpu-prof-dir=/tmp --cpu-prof-name=githeaven-navigation.cpuprofile scripts/benchmark-editor-navigation.mjs /tmp/navigation-profiled.json
+pnpm perf:cpu /tmp/githeaven-navigation.cpuprofile buildStateStack
+```
+
+`perf:cpu` reads a sampled V8 CPU profile and weights leaf samples by their microsecond time deltas. An optional function-name substring retains only stacks containing that function; matching nested ancestors do not double-count a sample. Output includes total/selected sampled time, selected sample count and sorted self time per function/source/line. It rejects invalid nodes, call trees, sample references and time-delta arrays. Tests cover weighted attribution, overlapping matching ancestors, unmatched filters and malformed input. Profiles include local source locations and should remain outside commits.
+
+The navigation benchmark profile contained 30.86 seconds of sampled time, of which **27.38 seconds (88.7%)** lay inside `buildStateStack` stacks. Within those stacks, **78.4%** was sampled in WebAssembly functions and **9.9%** in the Oniguruma JavaScript wrapper, including **5.8%** in its memcpy helper. The three hottest WASM frames alone accounted for 72.8%. This identifies grammar regex execution and its boundary overhead as the dominant CPU work, rather than visible-row token arrays or React. The profiled 30,000-line cold-end median was 932.74ms; profiling overhead and run variation make it unsuitable as a before/after speedup claim. All viewport output comparisons still matched.
+
+This attribution is scoped to the synthetic Node workload, not total native app CPU. Filtered GC samples can lose the operation's stack, so their absence does not establish zero allocation cost. WASM frames are unsymbolized; the profile does not identify a particular grammar expression for safe removal. The next architectural candidate is yielding/background or worker-backed state preparation with stale-document cancellation and retained highlighting, evaluated against native input responsiveness, total work and memory together. Changing themes, disabling bracket metadata or optimizing React alone cannot be credited with removing the measured regex work.
+
+Local artifacts: `/tmp/githeaven-navigation.cpuprofile`, `/tmp/githeaven-navigation-profiled.json`, and `/tmp/githeaven-navigation-cpu.json`. No renderer behavior changed in this profiling pass.
