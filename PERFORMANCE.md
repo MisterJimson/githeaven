@@ -648,3 +648,19 @@ A fresh macOS arm64 release build opened the existing fixture's 4,963-byte `src/
 All 20 foreground save checkpoints completed. The checkpoint includes two post-commit frame opportunities by design; the difference from IPC is not solely React CPU or a physical presentation measurement. It also does not include subsequent watcher reconciliation. The trace had 20 working watcher batches, 24 inexpensive editor rereads (1ms median / 2ms maximum), and four additional general history refreshes over the longer capture. There were no diff-preparation/highlight spans in Edit. The 20 editor-change worker dispatches correspond to the edit/undo sequence, while 23 unchanged-baseline observations show repository refreshes did not reschedule that work solely because the baseline was reread.
 
 This is a small-file baseline, not a before/after improvement or a large-file result. The earlier isolated save benchmark used different file sizes and no Tauri/editor state, so its times must not be directly subtracted as IPC overhead. No frame-gap capture was enabled in this scenario. All fixture file hashes and its empty index diff were verified afterward; no commits were created in the fixture. The release build passed, the notebook and fixture tab were closed, and the primary workspace restored. Raw local artifact: `githeaven-save-native-small.json` in the system temporary directory. Large-file native saves and saves concurrent with external editing remain separate verification targets.
+
+### Native large-file saves and external-edit conflict
+
+The same installed macOS arm64 release app opened the editor fixture's 982,780-byte, 30,000-line `src/file-02.ts`. Ten edit/save and undo/save pairs yielded 20 successful serialized saves. The measurement window was reset after the document opened. This used the ongoing process and a three-file editor fixture rather than the earlier fresh-process 32-file small fixture, so the size comparison is descriptive rather than a controlled causal attribution.
+
+| Boundary                         | Samples | Median ms | p95 ms | Maximum ms |
+| -------------------------------- | ------- | --------- | ------ | ---------- |
+| `ipc.save_file`                  | 20      | 10        | 29     | 30         |
+| `save.total`                     | 20      | 11        | 29     | 30         |
+| `ui.save-ready`                  | 20      | 32        | 40     | 59         |
+| Subsequent `git.refresh.working` | 20      | 19        | 28     | 29         |
+| `ipc.read_file`                  | 22      | 3         | 4      | 4          |
+
+Every successful save reached its foreground rendered checkpoint. The somewhat lower ready-checkpoint time than the small-file run is not evidence that large files save faster: frame phase, process state, fixture and interaction pacing differed. There were 20 worktree watcher batches, 20 editor-change dispatches for the edit/undo sequence, and 22 unchanged-baseline observations. No frame-gap capture was enabled, and no end-to-end speedup is claimed. Raw artifact: `githeaven-save-native-large.json` in the system temporary directory.
+
+After exporting those timings, a separate native conflict check inserted an unsaved editor comment, then wrote a different comment externally to that disposable file. Cmd+S reported that the file had changed on disk; the accessibility state retained the unsaved draft, and a disk check confirmed the external version was not overwritten. The external fixture change was conditionally restored, the editor comment undone, and the UI reported `Saved to disk`. Final checks verified all three fixture hashes and an empty staged diff. The fixture tab was closed and the primary workspace restored. This verifies rejection when an external edit precedes the save; it does not prove race-free behavior for a write landing precisely between the final comparison and rename.
