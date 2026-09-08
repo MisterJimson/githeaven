@@ -9,18 +9,21 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  color: #d8dedd;
-  background: #111416;
+  color: #e5ebe9;
+  background: var(--canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
   font-size: 13px;
-  --muted: #798482;
-  --faint: #55605f;
-  --border: #282e2e;
+  --canvas: #080b0d;
+  --panel: #101518;
+  --chrome: #141b1f;
+  --input: #080d10;
+  --muted: #96a39f;
+  --faint: #788681;
+  --border: #303c3f;
   --mint: #a3e5cc;
-  --panel: #171b1d;
 }
 * {
   box-sizing: border-box;
@@ -67,7 +70,7 @@ input,
 textarea,
 select {
   color: inherit;
-  background: #111517;
+  background: var(--input);
   border: 1px solid var(--border);
   border-radius: 5px;
 }
@@ -76,7 +79,7 @@ input {
 }
 input::placeholder,
 textarea::placeholder {
-  color: #65716e;
+  color: var(--faint);
 }
 svg {
   flex-shrink: 0;
@@ -119,7 +122,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: #111517;
+  background: var(--input);
   border-bottom: 1px solid var(--border);
 }
 .topbar-spacer,
@@ -145,7 +148,7 @@ kbd {
   border-bottom: 1px solid var(--border);
   padding: 0 15px;
   gap: 14px;
-  background: #171c1d;
+  background: var(--chrome);
   flex-shrink: 0;
 }
 .toolbar nav {
@@ -185,7 +188,7 @@ kbd {
   align-items: center;
   gap: 8px;
   padding: 6px 9px;
-  background: #111617;
+  background: var(--input);
   border: 1px solid #2a3431;
   border-radius: 5px;
   color: #76897e;
@@ -224,7 +227,7 @@ kbd {
 .sidebar {
   width: 223px;
   flex-shrink: 0;
-  background: #151a1b;
+  background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -237,7 +240,7 @@ kbd {
   justify-content: space-between;
   font-size: 9px;
   letter-spacing: 1px;
-  color: #7a8b81;
+  color: var(--muted);
   font-weight: 600;
   padding: 16px 16px 10px;
   flex-shrink: 0;
@@ -347,7 +350,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #191f20;
+  background: var(--chrome);
 }
 .panel-title > span,
 .panel-title > div {
@@ -391,9 +394,9 @@ kbd {
   font-size: 8px;
   font-weight: 500;
   letter-spacing: 1px;
-  color: #64746a;
-  border-bottom: 1px solid #222b25;
-  background: #141a18;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
   padding-right: 10px;
   flex-shrink: 0;
 }
@@ -411,7 +414,7 @@ kbd {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  background: #151a1b;
+  background: var(--canvas);
 }
 .commit-row {
   width: 100%;
@@ -420,7 +423,7 @@ kbd {
   padding: 0 10px 0 0;
   align-items: center;
   gap: 0;
-  border-bottom: 1px solid #1e2622;
+  border-bottom: 1px solid #172024;
   font-size: 11px;
 }
 .commit-row.selected {
@@ -483,7 +486,7 @@ kbd {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #111719;
+  background: var(--canvas);
 }
 .commit-details {
   min-height: 73px;
@@ -494,7 +497,7 @@ kbd {
   gap: 13px;
   padding: 17px 20px;
   border-bottom: 1px solid var(--border);
-  background: #181e1e;
+  background: var(--chrome);
 }
 .commit-avatar {
   width: 33px;
@@ -562,7 +565,7 @@ kbd {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
-  background: #141a1a;
+  background: var(--panel);
 }
 .tree-wrap {
   flex: 1;
@@ -573,8 +576,8 @@ kbd {
 .pierre-tree {
   --trees-font-size: 11px;
   --trees-font-family: "DM Sans", -apple-system, sans-serif;
-  --trees-bg: #141a1a;
-  --trees-fg: #a4b2aa;
+  --trees-bg: transparent;
+  --trees-fg: #c0ccc6;
   --trees-selected-bg-override: #283e31;
   --trees-selected-fg-override: #d6ebdb;
   --trees-selected-focused-border-override: #4d715a;
@@ -593,7 +596,7 @@ kbd {
   min-height: 42px;
   padding: 0 13px;
   border-bottom: 1px solid var(--border);
-  background: #171d1e;
+  background: var(--chrome);
   color: #aebdb4;
 }
 .file-toolbar > svg {
@@ -645,7 +648,7 @@ kbd {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #141718;
+  background: var(--canvas);
 }
 .code-view {
   height: 100%;
@@ -817,7 +820,7 @@ kbd {
 .composer {
   width: 254px;
   border-left: 1px solid var(--border);
-  background: #161d19;
+  background: var(--panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -871,7 +874,7 @@ kbd {
   padding: 12px;
   font-size: 12px;
   line-height: 1.7;
-  background: #111812;
+  background: var(--input);
 }
 .composer-hint {
   font-size: 10px;
@@ -888,7 +891,7 @@ kbd {
   gap: 18px;
   padding: 0 15px;
   border-top: 1px solid #2c3a30;
-  background: #141b17;
+  background: var(--panel);
   font-size: 10px;
   color: #7e9a83;
   flex-shrink: 0;
@@ -948,7 +951,7 @@ kbd {
   border: 1px solid #3b5140;
   border-radius: 7px;
   overflow: hidden;
-  background: #19241c;
+  background: var(--panel);
   box-shadow: 0 10px 60px #0008;
   z-index: 20;
 }
@@ -989,7 +992,7 @@ kbd {
   backdrop-filter: blur(5px);
 }
 .modal {
-  background: #1c2720;
+  background: var(--chrome);
   border: 1px solid #45604a;
   width: 460px;
   padding: 27px;
@@ -1025,9 +1028,9 @@ kbd {
   padding: 60px;
   background: radial-gradient(
     ellipse at 78% 38%,
-    #1e3026 0,
-    #141b17 38%,
-    #111517 72%
+    #14231d 0,
+    var(--panel) 38%,
+    var(--canvas) 72%
   );
 }
 .welcome-copy {
@@ -1178,7 +1181,7 @@ kbd {
   flex-shrink: 0;
   min-height: 0;
   border-left: 1px solid var(--border);
-  background: #191e20;
+  background: var(--panel);
 }
 .git-inspector .panel-title {
   padding: 0 12px;
@@ -1263,7 +1266,7 @@ kbd {
 }
 .commit-fields {
   border: 1px solid #353e3b;
-  background: #131719;
+  background: var(--input);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 12px;
@@ -1469,8 +1472,8 @@ kbd {
   margin: 72px auto 0;
   border: 1px solid #3c514b;
   border-radius: 10px;
-  background: #19201f;
-  color: #d8dedd;
+  background: var(--chrome);
+  color: #e5ebe9;
   box-shadow: 0 18px 70px #0008;
   overflow: hidden;
 }
