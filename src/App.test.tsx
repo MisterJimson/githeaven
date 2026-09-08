@@ -16,6 +16,7 @@ import { countEvent, performanceReport, startSpan } from "./performance";
 import type { Snapshot, Selection } from "./types";
 
 const diffLoads = vi.hoisted(() => vi.fn());
+const diffWork = vi.hoisted(() => ({ provider: vi.fn(), view: vi.fn() }));
 
 vi.mock("./api", () => ({ native: false, call: vi.fn(), errorText: String }));
 vi.mock("./PierreTree", () => ({
@@ -53,8 +54,18 @@ vi.mock("./PierreTree", () => ({
   },
 }));
 vi.mock("./Surface", () => ({
-  PierreProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DiffSurface: ({ selection }: { selection: Selection }) => {
+  PierreProvider: ({ children, ...props }: { children: ReactNode }) => {
+    diffWork.provider(props);
+    return <>{children}</>;
+  },
+  DiffSurface: ({
+    selection,
+    deferRefresh,
+  }: {
+    selection: Selection;
+    deferRefresh?: boolean;
+  }) => {
+    diffWork.view({ selection, deferRefresh });
     useEffect(() => {
       diffLoads(selection.path);
     }, [selection.path]);
@@ -1111,4 +1122,25 @@ it("resets exported measurements along with the performance notebook", async () 
   );
   expect(report.counters["test.before-reset"]).toBeUndefined();
   expect(report.window.discardedSamples).toBe(0);
+});
+
+it("pauses hidden Git prefetch and diff refresh in Edit, then resumes when Git is visible", async () => {
+  await openWorkspace({ changes: [modifiedChange] });
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+  await waitFor(() => expect(diffWork.view).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(diffWork.provider.mock.lastCall![0].changes).toHaveLength(1),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  await waitFor(() => {
+    expect(diffWork.provider.mock.lastCall![0].changes).toBeUndefined();
+    expect(diffWork.provider.mock.lastCall![0].previews).toBeUndefined();
+    expect(diffWork.view.mock.lastCall![0].deferRefresh).toBe(true);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Git (1)" }));
+  await waitFor(() => {
+    expect(diffWork.provider.mock.lastCall![0].changes).toHaveLength(1);
+    expect(diffWork.view.mock.lastCall![0].deferRefresh).toBe(false);
+  });
+  expect(screen.getByTestId("diff-worktree")).toBeTruthy();
 });

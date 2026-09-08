@@ -1421,10 +1421,18 @@ export function App() {
             >
               <PierreProvider
                 root={repo.root}
-                changes={projectSettling || indexPending ? undefined : changes}
+                changes={
+                  mode !== "history" || projectSettling || indexPending
+                    ? undefined
+                    : changes
+                }
                 refresh={tick}
                 selection={selection}
-                previews={projectSettling ? undefined : diffPreviews}
+                previews={
+                  mode !== "history" || projectSettling
+                    ? undefined
+                    : diffPreviews
+                }
               >
                 {(["history", "files"] as const).map((paneMode) => {
                   const active = mode === paneMode;
@@ -1815,6 +1823,7 @@ export function App() {
                                               : tick
                                           }
                                           deferRefresh={
+                                            !active ||
                                             projectSettling ||
                                             (selection.source !== "commit" &&
                                               stageOperations.some(
