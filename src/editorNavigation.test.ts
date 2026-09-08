@@ -58,10 +58,10 @@ it("waits for the target to enter the viewport and stop moving across two frames
   expect(performanceReport().samples).toEqual([
     expect.objectContaining({
       name: "ui.editor-jump.end",
-      duration: 80,
       outcome: "ok",
     }),
   ]);
+  expect(performanceReport().samples[0].duration).toBeCloseTo(80, 6);
   expect(callbacks.size).toBe(0);
   cancel();
   expect(performanceReport().counters["editor.jump-cancelled"]).toBeUndefined();

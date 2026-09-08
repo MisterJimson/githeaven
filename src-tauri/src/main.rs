@@ -8,7 +8,7 @@ use repository::*;
 use serde::Serialize;
 use startup::{startup_milestone, Milestone, Startup};
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -34,15 +34,31 @@ impl Session {
 struct ChangeEvent {
     root: String,
     history: bool,
+    categories: BTreeSet<&'static str>,
+}
+
+fn watch_category(path: &Path, git_dir: &Path, common: &Path) -> &'static str {
+    let Ok(relative) = path
+        .strip_prefix(git_dir)
+        .or_else(|_| path.strip_prefix(common))
+    else {
+        return "worktree";
+    };
+    if relative == Path::new("index") {
+        "index"
+    } else if relative == Path::new("HEAD") {
+        "head"
+    } else if relative.starts_with("refs") || relative == Path::new("packed-refs") {
+        "refs"
+    } else if relative.starts_with("objects") {
+        "objects"
+    } else {
+        "metadata"
+    }
 }
 
 fn changes_history(path: &Path, git_dir: &Path, common: &Path) -> bool {
-    // Index writes affect status, not refs or commit history. Keep all other
-    // metadata conservative, including HEAD, refs, objects and directory events.
-    if path == git_dir.join("index") || path == common.join("index") {
-        return false;
-    }
-    path.starts_with(git_dir) || path.starts_with(common)
+    !matches!(watch_category(path, git_dir, common), "worktree" | "index")
 }
 
 fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatcher, String> {
@@ -76,6 +92,7 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
             events.extend(rx.try_iter());
             let mut relevant = false;
             let mut history = false;
+            let mut categories = BTreeSet::new();
             for event in events.into_iter().flatten() {
                 if matches!(event.kind, notify::EventKind::Access(_)) {
                     continue;
@@ -94,6 +111,7 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
                     }
                     relevant = true;
                     history |= changes_history(&path, &git_dir, &common);
+                    categories.insert(watch_category(&path, &git_dir, &common));
                 }
             }
             if relevant {
@@ -102,6 +120,7 @@ fn watch(app: tauri::AppHandle, root: PathBuf) -> Result<notify::RecommendedWatc
                     ChangeEvent {
                         root: root.to_string_lossy().into(),
                         history,
+                        categories,
                     },
                 );
             }
@@ -385,6 +404,31 @@ fn main() {
 #[cfg(test)]
 mod session_tests {
     use super::*;
+    #[test]
+    fn watcher_categories_expose_only_fixed_labels() {
+        let common = Path::new("repo/.git");
+        let worktree = common.join("worktrees/topic");
+        for (path, expected) in [
+            (worktree.join("index"), "index"),
+            (worktree.join("HEAD"), "head"),
+            (common.join("refs/heads/private-name"), "refs"),
+            (common.join("packed-refs"), "refs"),
+            (common.join("objects/ab/private-object"), "objects"),
+            (common.join("config"), "metadata"),
+            (PathBuf::from("repo/private-file.txt"), "worktree"),
+        ] {
+            assert_eq!(watch_category(&path, &worktree, common), expected);
+        }
+        let event = ChangeEvent {
+            root: "repo".into(),
+            history: true,
+            categories: BTreeSet::from(["index", "objects", "index"]),
+        };
+        assert_eq!(
+            serde_json::to_value(event).unwrap()["categories"],
+            serde_json::json!(["index", "objects"])
+        );
+    }
     #[test]
     fn index_events_refresh_status_without_reloading_history() {
         let common = Path::new("repo/.git");

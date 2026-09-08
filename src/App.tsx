@@ -44,6 +44,7 @@ import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
 import { startRuntimeCapture } from "./runtimeCapture";
 import { StartupReady } from "./startup";
+import { recordWatchBatch } from "./watchMeasurements";
 import {
   clearPerformanceSamples,
   downloadPerformanceReport,
@@ -669,9 +670,15 @@ export function App() {
     if (!native || !repo) return;
     let disposed = false;
     let cleanup: (() => void) | undefined;
-    listen<{ root: string; history: boolean }>("repo-changed", (event) => {
-      if (event.payload.root === repo.root) void refresh(event.payload.history);
-    })
+    listen<{ root: string; history: boolean; categories?: string[] }>(
+      "repo-changed",
+      (event) => {
+        if (event.payload.root === repo.root) {
+          recordWatchBatch(event.payload.history, event.payload.categories);
+          void refresh(event.payload.history);
+        }
+      },
+    )
       .then((fn) => {
         if (disposed) fn();
         else cleanup = fn;
