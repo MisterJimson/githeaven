@@ -3,7 +3,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
 import { CommitNode } from "./CommitNode";
 import { startSpan } from "./performance";
-import { layoutGraph, GRAPH_ROW_HEIGHT, GRAPH_ROW_CENTER } from "./graph";
+import {
+  layoutGraph,
+  reachable,
+  GRAPH_ROW_HEIGHT,
+  GRAPH_ROW_CENTER,
+} from "./graph";
 import type { Commit, Reference } from "./types";
 const colors = [
   "#8dd9bb",
@@ -17,6 +22,7 @@ export const History = memo(function History({
   root,
   commits,
   search = "",
+  branchTip = "",
   refs,
   selected,
   onSelect,
@@ -34,6 +40,7 @@ export const History = memo(function History({
   root?: string;
   commits: Commit[];
   search?: string;
+  branchTip?: string;
   refs: Reference[];
   selected?: string;
   onSelect: (commit: Commit) => void;
@@ -97,6 +104,11 @@ export const History = memo(function History({
         : commits,
     [commits, head, hasWorkingChanges],
   );
+  const branchHistory = useMemo(
+    () => (branchTip ? reachable(commits, branchTip) : null),
+    [commits, branchTip],
+  );
+  const revealedBranch = useRef("");
   const graph = useMemo(() => {
     const finish = startSpan("history.layout");
     try {
@@ -135,6 +147,30 @@ export const History = memo(function History({
     overscan: 10,
     initialRect: { width: 800, height: 600 },
   });
+  useEffect(() => {
+    if (!branchTip) {
+      revealedBranch.current = "";
+      return;
+    }
+    if (!active || revealedBranch.current === branchTip || !branchHistory)
+      return;
+    const viewport = scroll.current;
+    if (!viewport || viewport.clientHeight <= 0) return;
+    const first = entries.findIndex((commit) => branchHistory.has(commit.oid));
+    if (first < 0) {
+      if (hasMore) onLoadMore?.();
+      return;
+    }
+    const start = Math.floor(viewport.scrollTop / GRAPH_ROW_HEIGHT);
+    const end = Math.ceil(
+      (viewport.scrollTop + viewport.clientHeight) / GRAPH_ROW_HEIGHT,
+    );
+    const visible = entries
+      .slice(start, end)
+      .some((commit) => branchHistory.has(commit.oid));
+    revealedBranch.current = branchTip;
+    if (!visible) virtual.scrollToIndex(first, { align: "start" });
+  }, [branchTip, branchHistory, entries, active, hasMore, onLoadMore, virtual]);
   function loadNearEnd() {
     const viewport = scroll.current;
     if (
@@ -242,10 +278,11 @@ export const History = memo(function History({
             const isWorking = hasWorkingChanges && item.index === 0;
             const dimmed =
               !isWorking &&
-              !!query &&
-              !`${commit.subject} ${commit.author} ${commit.oid}`
-                .toLowerCase()
-                .includes(query);
+              ((branchHistory !== null && !branchHistory.has(commit.oid)) ||
+                (!!query &&
+                  !`${commit.subject} ${commit.author} ${commit.oid}`
+                    .toLowerCase()
+                    .includes(query)));
             const commitRefs = refMap.get(commit.oid) ?? [];
             const checkedOut =
               commitRefs.some(

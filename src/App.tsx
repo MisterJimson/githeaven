@@ -44,7 +44,6 @@ import { BranchSidebar } from "./BranchSidebar";
 import { History } from "./History";
 import { PierreTree } from "./PierreTree";
 import type { FileSession } from "./Surface";
-import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
 import { startRuntimeCapture } from "./runtimeCapture";
 import { StartupReady } from "./startup";
@@ -1211,11 +1210,6 @@ export function App() {
       setBusy("");
     }
   }
-  const visibleCommits = useMemo(() => {
-    const commits = repo?.commits ?? [];
-    const reach = branchFilter ? reachable(commits, branchFilter) : null;
-    return reach ? commits.filter((c) => reach.has(c.oid)) : commits;
-  }, [repo?.commits, branchFilter]);
   const recordTiming = useCallback(
     (ms: number) => setTimes((t) => [...t.slice(-49), ms]),
     [],
@@ -1630,22 +1624,13 @@ export function App() {
                             inert={diffOpen}
                             style={layerStyle(!diffOpen)}
                           >
-                            {branchFilter && (
-                              <div className="panel-title">
-                                <button
-                                  className="text-button"
-                                  onClick={() => setBranchFilter("")}
-                                >
-                                  Clear branch filter <X size={12} />
-                                </button>
-                              </div>
-                            )}
                             <History
                               root={repo.root}
                               active={active && !diffOpen}
                               hasMore={repo.has_more}
                               onLoadMore={loadOlder}
-                              commits={visibleCommits}
+                              commits={repo.commits ?? []}
+                              branchTip={branchFilter}
                               search={filter}
                               refs={repo.refs ?? []}
                               selected={
@@ -1653,7 +1638,10 @@ export function App() {
                                   ? selected?.oid
                                   : undefined
                               }
-                              onSelectRef={setActiveRef}
+                              onSelectRef={(ref) => {
+                                filterBranch(ref.oid);
+                                setActiveRef(ref);
+                              }}
                               onCheckoutRef={checkoutBranch}
                               onSelect={(commit) =>
                                 navigate(() => selectCommit(commit))

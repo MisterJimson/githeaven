@@ -275,3 +275,54 @@ it("resizes graph columns together with rows and remembers widths without changi
       .getAttribute("aria-valuenow"),
   ).toBe("78");
 });
+
+it("dims unrelated commits without changing graph geometry and only reveals branches absent from the viewport", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(56);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(56);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(336);
+  const scrollTo = vi.fn();
+  HTMLElement.prototype.scrollTo = scrollTo;
+  const commits = Array.from({ length: 12 }, (_, i) => ({
+    oid: `c${i}`,
+    parents: i < 11 && i !== 3 ? [`c${i + 1}`] : [],
+    subject: `Commit ${i}`,
+    author: "A",
+    timestamp: 12 - i,
+  }));
+  const props = {
+    commits,
+    refs: [],
+    head: "c0",
+    branch: "main",
+    workingCount: 0,
+    workingSelected: false,
+    onSelect: vi.fn(),
+    onSelectWorking: vi.fn(),
+  };
+  const { container, rerender } = render(<History {...props} />);
+  const rows = [...container.querySelectorAll(".commit-row")];
+  const geometry = rows.map((row) => row.querySelector("svg")!.innerHTML);
+  scrollTo.mockClear();
+  rerender(<History {...props} branchTip="c0" />);
+  expect(container.querySelectorAll(".commit-row")).toHaveLength(rows.length);
+  expect(rows.map((row) => row.querySelector("svg")!.innerHTML)).toEqual(
+    geometry,
+  );
+  expect(rows[0].classList.contains("search-dimmed")).toBe(false);
+  expect(rows[4].classList.contains("search-dimmed")).toBe(true);
+  expect(scrollTo).not.toHaveBeenCalled();
+  rerender(<History {...props} branchTip="c8" />);
+  expect(scrollTo).toHaveBeenCalledWith(
+    expect.objectContaining({ top: 8 * 28 }),
+  );
+  scrollTo.mockClear();
+  rerender(<History {...props} branchTip="c8" search="unmatched" />);
+  expect(scrollTo).not.toHaveBeenCalled();
+  const viewport = screen.getByRole("listbox", { name: "Commit history" });
+  viewport.scrollTop = 9 * 28;
+  rerender(<History {...props} branchTip="c6" />);
+  expect(scrollTo).not.toHaveBeenCalled();
+  rerender(<History {...props} />);
+  expect(container.querySelector(".search-dimmed")).toBeNull();
+});
