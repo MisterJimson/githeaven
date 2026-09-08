@@ -17,12 +17,16 @@ afterEach(() => {
 it("opens associated PRs and reuses the lookup on reselection", async () => {
   const url = "https://github.com/owner/repo/pull/42";
   vi.mocked(call).mockResolvedValue([{ number: 42, url }]);
-  const { rerender } = render(
+  const { rerender, container } = render(
     <CommitPullRequests root="/prs" oid="a" active />,
   );
+  const slot = container.querySelector(".commit-pr-actions");
+  expect(slot).not.toBeNull();
   const button = await screen.findByRole("button", {
     name: "Open PR #42 on GitHub",
   });
+  expect(container.querySelector(".commit-pr-actions")).toBe(slot);
+  expect(button.textContent?.trim()).toBe("#42");
   fireEvent.click(button);
   expect(call).toHaveBeenCalledWith("open_pull_request", { url });
   rerender(<CommitPullRequests root="/prs" oid="a" active={false} />);

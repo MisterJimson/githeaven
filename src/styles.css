@@ -1772,3 +1772,43 @@ kbd {
   object-fit: cover;
   border-radius: inherit;
 }
+.commit-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 33px;
+  flex-shrink: 0;
+}
+.commit-pr-actions {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 33px;
+  overflow-x: auto;
+}
+.commit-pr-button {
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--chrome);
+  color: var(--mint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.commit-pr-button:hover {
+  border-color: var(--mint);
+}
+.commit-pr-actions > [role="status"] {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  font-size: 10px;
+  overflow: auto;
+}

@@ -2111,13 +2111,12 @@ export function App() {
                             {selected && (
                               <>
                                 <div className="commit-details">
-                                  <CommitAvatar
-                                    key={`${repo.root}:${selected.oid}`}
-                                    root={repo.root}
-                                    commit={selected}
-                                  />
-                                  <div className="commit-text">
-                                    <strong>{selected.subject}</strong>
+                                  <div className="commit-identity-row">
+                                    <CommitAvatar
+                                      key={`${repo.root}:${selected.oid}`}
+                                      root={repo.root}
+                                      commit={selected}
+                                    />
                                     <CommitPullRequests
                                       key={`${repo.root}:${selected.oid}`}
                                       root={repo.root}
@@ -2127,6 +2126,9 @@ export function App() {
                                         reviewKind === "commit"
                                       }
                                     />
+                                  </div>
+                                  <div className="commit-text">
+                                    <strong>{selected.subject}</strong>
                                     <span>
                                       {selected.author}
                                       <span className="dot-separator">·</span>

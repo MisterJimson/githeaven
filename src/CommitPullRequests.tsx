@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { GitPullRequest, ExternalLink } from "lucide-react";
 import { call } from "./api";
 type PullRequest = { number: number; url: string };
 const cache = new Map<
@@ -47,10 +47,12 @@ export function CommitPullRequests({
     };
   }, [root, oid, active]);
   return (
-    <>
+    <div className="commit-pr-actions">
       {pulls.map((pr) => (
         <button
-          className="text-button"
+          className="commit-pr-button"
+          aria-label={`Open PR #${pr.number} on GitHub`}
+          title={`Open PR #${pr.number} on GitHub`}
           key={pr.url}
           onClick={() => {
             setError("");
@@ -59,10 +61,10 @@ export function CommitPullRequests({
             );
           }}
         >
-          <ExternalLink size={13} /> Open PR #{pr.number} on GitHub
+          <GitPullRequest size={13} /> #{pr.number} <ExternalLink size={11} />
         </button>
       ))}
       {error && <small role="status">{error}</small>}
-    </>
+    </div>
   );
 }
