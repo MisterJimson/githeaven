@@ -24,8 +24,18 @@ import type { Versions } from "./types";
 const highlightPool = vi.hoisted(() => ({ primeDiffHighlightCache: vi.fn() }));
 const installed = vi.hoisted(() => vi.fn());
 const scrollTo = vi.hoisted(() => vi.fn());
-const navigation = vi.hoisted(() => vi.fn(() => vi.fn()));
+const navigation = vi.hoisted(() =>
+  vi.fn(
+    (
+      _host: HTMLElement,
+      _line: number,
+      _boundary: string,
+      onCancel?: () => void,
+    ) => vi.fn(onCancel),
+  ),
+);
 const focusEditor = vi.hoisted(() => vi.fn());
+const prepareLine = vi.hoisted(() => vi.fn(async () => true));
 vi.mock("./editorNavigation", () => ({ measureEditorNavigation: navigation }));
 vi.mock("./api", () => ({ call: vi.fn(), errorText: String }));
 vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: class {} }));
@@ -58,6 +68,7 @@ vi.mock("@pierre/diffs/react", () => ({
           getItem: (id: string) => items.find((item) => item.id === id),
           scrollTo,
           getEditor: () => ({
+            prepareLine,
             focus: focusEditor,
             getEditState: () => ({ document }),
           }),
@@ -239,12 +250,15 @@ it("measures and directly scrolls boundary navigation from Pierre's contentedita
     screen.getByLabelText("File viewer"),
     30_001,
     "end",
+    expect.any(Function),
   );
-  expect(focusEditor).toHaveBeenCalledWith({
-    lineNumber: 30_001,
-    character: 12,
-    preventScroll: true,
-  });
+  await waitFor(() =>
+    expect(focusEditor).toHaveBeenCalledWith({
+      lineNumber: 30_001,
+      character: 12,
+      preventScroll: true,
+    }),
+  );
   await waitFor(() =>
     expect(scrollTo).toHaveBeenCalledWith({
       type: "line",
@@ -265,6 +279,29 @@ it("measures and directly scrolls boundary navigation from Pierre's contentedita
       behavior: "instant",
     }),
   );
+});
+
+it("does not jump after typing cancels pending language-state preparation", async () => {
+  let ready!: (value: boolean) => void;
+  prepareLine.mockImplementationOnce(
+    () => new Promise<boolean>((resolve) => (ready = resolve)),
+  );
+  render(
+    <EditorSurface
+      session={{ path: "one.ts", contents: "one", original: "one", version: 1 }}
+      onChange={vi.fn()}
+      onReady={vi.fn()}
+    />,
+  );
+  focusEditor.mockClear();
+  scrollTo.mockClear();
+  const viewer = screen.getByTestId("viewer");
+  fireEvent.keyDown(viewer, { key: "End", ctrlKey: true });
+  expect(focusEditor).not.toHaveBeenCalled();
+  fireEvent.keyDown(viewer, { key: "a" });
+  await act(async () => ready(true));
+  expect(focusEditor).not.toHaveBeenCalled();
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
 it("warms one editor slot and replaces documents without remounting the viewport", () => {

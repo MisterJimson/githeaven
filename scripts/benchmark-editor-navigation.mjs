@@ -15,6 +15,8 @@ const highlighter = await getSharedHighlighter({
 });
 const initializationMs = performance.now() - started;
 const viewportLines = 60;
+const yielding = process.argv.includes("--yield");
+const outputPath = process.argv.slice(2).find((arg) => arg !== "--yield");
 const results = [];
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -38,6 +40,7 @@ try {
       ["return-top", 0],
     ];
     const samples = Object.fromEntries(ranges.map(([name]) => [name, []]));
+    const gaps = Object.fromEntries(ranges.map(([name]) => [name, []]));
     const outputHashes = {};
     // Each iteration has a fresh document/tokenizer. Grammar/JIT remain warm.
     for (let iteration = -3; iteration < 20; iteration++) {
@@ -52,14 +55,36 @@ try {
       try {
         for (const [operation, startingLine] of ranges) {
           const start = performance.now();
-          const tokens = tokenizer.tokenizeViewport({
-            startingLine,
-            totalLines: viewportLines,
-            bufferBefore: 0,
-            bufferAfter: 0,
-          });
+          let previousTask = start;
+          let maxTaskGap = 0;
+          const tick = () => {
+            const now = performance.now();
+            maxTaskGap = Math.max(maxTaskGap, now - previousTask);
+            previousTask = now;
+          };
+          const heartbeat = setInterval(tick, 1);
+          let tokens;
+          try {
+            if (yielding)
+              await tokenizer.prepareViewportState(
+                startingLine,
+                new AbortController().signal,
+              );
+            tokens = tokenizer.tokenizeViewport({
+              startingLine,
+              totalLines: viewportLines,
+              bufferBefore: 0,
+              bufferAfter: 0,
+            });
+          } finally {
+            clearInterval(heartbeat);
+          }
           const duration = performance.now() - start;
-          if (iteration >= 0) samples[operation].push(duration);
+          tick();
+          if (iteration >= 0) {
+            samples[operation].push(duration);
+            gaps[operation].push(maxTaskGap);
+          }
           // Validate outside timing; normalize to per-character colors so token
           // grouping differences cannot hide a language-state mismatch.
           const actual = [...tokens.values()].map((row) =>
@@ -91,6 +116,7 @@ try {
         p50: sorted[9],
         p95: sorted[18],
         samples: values,
+        maxTaskGapSamples: gaps[operation],
         outputHash: outputHashes[operation],
       };
       results.push(result);
@@ -103,9 +129,9 @@ try {
   disposeHighlighter();
   delete globalThis.window;
 }
-if (process.argv[2])
+if (outputPath)
   writeFileSync(
-    process.argv[2],
+    outputPath,
     JSON.stringify(
       {
         node: process.version,
@@ -113,6 +139,7 @@ if (process.argv[2])
         arch: process.arch,
         initializationMs,
         viewportLines,
+        yielding,
         results,
       },
       null,

@@ -66,19 +66,23 @@ it("waits for the target to enter the viewport and stop moving across two frames
   cancel();
   expect(performanceReport().counters["editor.jump-cancelled"]).toBeUndefined();
 });
-it.each(["cancel", "blur", "detach", "wheel"])(
+it.each(["cancel", "blur", "detach", "wheel", "outside-click"])(
   "excludes interrupted navigation: %s",
   (kind) => {
     const { host, callbacks, advance } = setup();
-    const cancel = measureEditorNavigation(host, 30000, "end");
+    const abort = vi.fn();
+    const cancel = measureEditorNavigation(host, 30000, "end", abort);
     if (kind === "cancel") cancel();
     if (kind === "blur") window.dispatchEvent(new Event("blur"));
     if (kind === "detach") host.remove();
     if (kind === "wheel") host.dispatchEvent(new WheelEvent("wheel"));
+    if (kind === "outside-click")
+      document.body.dispatchEvent(new Event("pointerdown"));
     advance();
     expect(callbacks.size).toBe(0);
     expect(performanceReport().samples).toHaveLength(0);
     expect(performanceReport().counters["editor.jump-cancelled"]).toBe(1);
+    expect(abort).toHaveBeenCalledTimes(1);
   },
 );
 it("records a missing destination as an error instead of a successful latency", () => {

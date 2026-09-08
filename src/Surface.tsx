@@ -34,7 +34,7 @@ import { DiffCache, DiffPreparationSuperseded } from "./DiffCache";
 import { nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
-import { countEvent, registerGauge } from "./performance";
+import { countEvent, registerGauge, startSpan } from "./performance";
 import { startForegroundTiming } from "./timing";
 import { measureEditorNavigation } from "./editorNavigation";
 import type { Change, Selection, Versions } from "./types";
@@ -598,29 +598,46 @@ export const EditorSurface = memo(function EditorSurface({
         const doc = editor?.getEditState()?.document;
         if (editor && doc && host.current) {
           const line = command === "moveCursorToDocStart" ? 1 : doc.lineCount;
-          cancelNavigation.current = measureEditorNavigation(
+          const controller = new AbortController();
+          const cancel = measureEditorNavigation(
             host.current,
             line,
             command === "moveCursorToDocStart" ? "start" : "end",
+            () => controller.abort(),
           );
+          cancelNavigation.current = cancel;
           event.preventDefault();
           event.stopPropagation();
-          // Update the caret without native scrolling; CodeView owns the
-          // virtual layout and can reach the destination directly.
-          editor.focus({
-            lineNumber: line,
-            character:
-              command === "moveCursorToDocEnd"
-                ? doc.getLineLength(line - 1)
-                : 0,
-            preventScroll: true,
-          });
-          view.current?.scrollTo({
-            type: "line",
-            id: "editor",
-            lineNumber: line,
-            behavior: "instant",
-          });
+          const finishPreparation = startSpan("editor.jump-prepare");
+          void editor
+            .prepareLine(line, controller.signal)
+            .then((ready) => {
+              if (!ready || controller.signal.aborted) {
+                cancel();
+                return;
+              }
+              finishPreparation();
+              // Keep the previous highlighted viewport until prefix state is
+              // ready; then move the caret and virtual viewport together.
+              editor.focus({
+                lineNumber: line,
+                character:
+                  command === "moveCursorToDocEnd"
+                    ? doc.getLineLength(line - 1)
+                    : 0,
+                preventScroll: true,
+              });
+              view.current?.scrollTo({
+                type: "line",
+                id: "editor",
+                lineNumber: line,
+                behavior: "instant",
+              });
+            })
+            .catch(() => {
+              finishPreparation("error");
+              cancel();
+            });
         }
       }}
     >

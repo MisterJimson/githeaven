@@ -432,3 +432,28 @@ The navigation benchmark profile contained 30.86 seconds of sampled time, of whi
 This attribution is scoped to the synthetic Node workload, not total native app CPU. Filtered GC samples can lose the operation's stack, so their absence does not establish zero allocation cost. WASM frames are unsymbolized; the profile does not identify a particular grammar expression for safe removal. The next architectural candidate is yielding/background or worker-backed state preparation with stale-document cancellation and retained highlighting, evaluated against native input responsiveness, total work and memory together. Changing themes, disabling bracket metadata or optimizing React alone cannot be credited with removing the measured regex work.
 
 Local artifacts: `/tmp/githeaven-navigation.cpuprofile`, `/tmp/githeaven-navigation-profiled.json`, and `/tmp/githeaven-navigation-cpu.json`. No renderer behavior changed in this profiling pass.
+
+### Yielding cold-jump preparation
+
+The pinned editor patch now exposes cancellable prefix-state preparation in approximately 4ms slices, yielding through MessageChannel tasks between slices. The budget is checked between grammar lines, so it is a soft budget: a pathological individual grammar match can still exceed it. No worker or extra full-file source cache is introduced. Preparation retains checkpoints for the existing tokenizer and stops on abort, document-version change, theme change or cleanup.
+
+For the two document-boundary commands, Edit keeps its current highlighted viewport and caret while preparing the destination. It then moves the caret and virtual viewport together. Later keys, pointer/wheel input, focus loss, timeout, replacement or unmount cancel pending work; stale completion cannot trigger a later jump. Completed preparation is recorded as `editor.jump-prepare`; cancelled requests are counted by the existing navigation probe. Other scrolling paths still use synchronous viewport preparation.
+
+```sh
+pnpm perf:editor-navigation /tmp/navigation-sync.json
+pnpm perf:editor-navigation /tmp/navigation-yield.json --yield
+```
+
+The benchmark now records each operation's longest observed event-loop task gap using a 1ms timer. The yielding mode prepares state before requesting the same visible tokens. Twenty measured iterations per size, after three warmups, produced these cold-end results:
+
+|  Lines | Synchronous elapsed median | Yielding elapsed median | Synchronous longest-gap median | Yielding longest-gap median / p95 |
+| -----: | -------------------------: | ----------------------: | -----------------------------: | --------------------------------: |
+|  1,000 |                    31.41ms |                 29.29ms |                        31.41ms |                     4.62 / 6.15ms |
+| 10,000 |                   296.36ms |                300.06ms |                       296.36ms |                    4.59 / 15.70ms |
+| 30,000 |                   934.31ms |                898.13ms |                       934.32ms |                    4.75 / 25.05ms |
+
+The largest yielding task gap at 30,000 lines was 48.03ms. Total elapsed time remains approximately the same; this is a responsiveness improvement, not elimination of tokenization work. All twelve output hashes match between modes, with full-file highlighting comparisons inside each run. Four additional tokenizer tests force yields and verify completion, abort, editing and cleanup without changing colors or undo state. A Surface regression test verifies that typing cancels a pending jump before it moves the caret.
+
+Native verification on the 30,000-line fixture recorded an uninterrupted preparation of **861ms**, an end jump reaching its destination in **934ms**, and a **23ms** input-to-paint-opportunity sample for that command. No recorded frame gap over 50ms intersected that preparation interval. Subsequent cached start/end jumps were 79/54ms. During a separate pending cold jump, typing `x` after approximately 151ms cancelled the jump and inserted at the original first-line cursor; the typing sample was 27ms and undo restored saved contents. The trace recorded two cancelled navigation requests, including an immediately superseded start command.
+
+The full capture also contains seventeen frame gaps above 50ms, up to 304ms, outside the uninterrupted preparation interval, including edit/undo, file switching and accessibility-observation periods. This change does not establish that the editor is stall-free overall. All fixture disk hashes remain unchanged, capture is off, and the primary workspace was restored. Local artifacts: `/tmp/githeaven-navigation-sync.json`, `/tmp/githeaven-navigation-yield.json`, and `githeaven-yield-native.json` in the system temporary directory.

@@ -7,6 +7,7 @@ export function measureEditorNavigation(
   host: HTMLElement,
   line: number,
   boundary: "start" | "end",
+  onCancel?: () => void,
 ) {
   const name = `ui.editor-jump.${boundary}`;
   const started = performance.now();
@@ -20,12 +21,14 @@ export function measureEditorNavigation(
     cancelAnimationFrame(frame);
     window.removeEventListener("blur", cancel);
     document.removeEventListener("visibilitychange", cancel);
-    host.removeEventListener("pointerdown", cancel, true);
-    host.removeEventListener("wheel", cancel, true);
+    window.removeEventListener("pointerdown", cancel, true);
+    window.removeEventListener("wheel", cancel, true);
+    window.removeEventListener("keydown", cancel, true);
   };
   const cancel = () => {
     if (!active) return;
     cleanup();
+    onCancel?.();
     countEvent("editor.jump-cancelled");
   };
   const tick = () => {
@@ -54,6 +57,7 @@ export function measureEditorNavigation(
     previousBottom = visible ? rect.bottom : undefined;
     if (performance.now() - started >= 15_000) {
       cleanup();
+      onCancel?.();
       recordDuration(name, started, performance.now() - started, "error");
       return;
     }
@@ -61,8 +65,9 @@ export function measureEditorNavigation(
   };
   window.addEventListener("blur", cancel);
   document.addEventListener("visibilitychange", cancel);
-  host.addEventListener("pointerdown", cancel, true);
-  host.addEventListener("wheel", cancel, { capture: true, passive: true });
+  window.addEventListener("pointerdown", cancel, true);
+  window.addEventListener("wheel", cancel, { capture: true, passive: true });
+  window.addEventListener("keydown", cancel, true);
   frame = requestAnimationFrame(tick);
   return cancel;
 }

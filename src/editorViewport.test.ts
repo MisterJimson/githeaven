@@ -36,6 +36,61 @@ const source = [
   "last`;",
   ...Array.from({ length: 40 }, (_, i) => `export const value${i} = ${i};`),
 ].join("\n");
+it("prepares distant language state in yielding slices without edits or undo entries", async () => {
+  const { doc, tokenizer } = setup();
+  let clock = 0;
+  const now = vi
+    .spyOn(performance, "now")
+    .mockImplementation(() => (clock += 5));
+  try {
+    expect(
+      await tokenizer.prepareViewportState(40, new AbortController().signal),
+    ).toBe(true);
+    check(doc, tokenizer, 30, 10);
+    expect(doc.version).toBe(0);
+    expect(doc.canUndo).toBe(false);
+  } finally {
+    now.mockRestore();
+    tokenizer.cleanUp();
+  }
+});
+it.each(["abort", "edit", "cleanup"])(
+  "stops yielding preparation after %s",
+  async (reason) => {
+    const { doc, tokenizer } = setup();
+    const controller = new AbortController();
+    let clock = 0;
+    const now = vi
+      .spyOn(performance, "now")
+      .mockImplementation(() => (clock += 5));
+    try {
+      const pending = tokenizer.prepareViewportState(40, controller.signal);
+      if (reason === "abort") controller.abort();
+      if (reason === "cleanup") tokenizer.cleanUp();
+      if (reason === "edit") {
+        const change = doc.applyEdits([
+          {
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: 2 },
+            },
+            newText: "//",
+          },
+        ])!;
+        tokenizer.tokenize(
+          change,
+          { startingLine: 0, totalLines: 5, bufferBefore: 0, bufferAfter: 0 },
+          true,
+        );
+      }
+      expect(await pending).toBe(false);
+      if (reason !== "cleanup") check(doc, tokenizer, 30, 10);
+    } finally {
+      now.mockRestore();
+      tokenizer.cleanUp();
+    }
+  },
+);
 function setup() {
   const doc = new TextDocument("fixture.ts", source, "typescript");
   const tokenizer = new EditorTokenizer({

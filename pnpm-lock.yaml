@@ -106,7 +106,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@pierre/diffs@1.4.0': 2433595e69aa20a43ee053f12a864b217dcc200e78486b925135c58164565b4d
+  '@pierre/diffs@1.4.0': 6182d2b29f5b0626ff7ce7f317a29e4c4b34a72873ae04b402bdb7ebc3ff3195
 
 importers:
 
@@ -117,7 +117,7 @@ importers:
         version: 5.3.0
       '@pierre/diffs':
         specifier: 1.4.0
-        version: 1.4.0(patch_hash=2433595e69aa20a43ee053f12a864b217dcc200e78486b925135c58164565b4d)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.4.0(patch_hash=6182d2b29f5b0626ff7ce7f317a29e4c4b34a72873ae04b402bdb7ebc3ff3195)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@pierre/trees':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.3)
@@ -2142,7 +2142,7 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.81.0':
     optional: true
 
-  '@pierre/diffs@1.4.0(patch_hash=2433595e69aa20a43ee053f12a864b217dcc200e78486b925135c58164565b4d)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@pierre/diffs@1.4.0(patch_hash=6182d2b29f5b0626ff7ce7f317a29e4c4b34a72873ae04b402bdb7ebc3ff3195)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@pierre/theme': 2.0.0
       '@pierre/theming': 1.0.1(@pierre/theme@2.0.0)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.3)
