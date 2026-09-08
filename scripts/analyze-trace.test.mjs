@@ -71,6 +71,32 @@ const trace = (samples) => ({
   window: { discardedSamples: 0 },
   samples,
 });
+it("exposes fixed watcher counters without adding overlapping categories or inventing missing values", () => {
+  const report = analyzeTrace({
+    ...trace([]),
+    counters: {
+      "watch.batch.history": 5,
+      "watch.batch.working": 5,
+      "watch.category.index": 10,
+      "watch.category.objects": 5,
+      "watch.category.private-path": 123,
+    },
+  });
+  expect(report.watcher).toEqual([
+    { name: "watch.batch.history", batches: 5 },
+    { name: "watch.batch.working", batches: 5 },
+    { name: "watch.category.index", batches: 10 },
+    { name: "watch.category.objects", batches: 5 },
+  ]);
+  expect(analyzeTrace(trace([])).watcher).toEqual([]);
+  for (const value of [-1, 0.5, "5", NaN, Infinity])
+    expect(() =>
+      analyzeTrace({
+        ...trace([]),
+        counters: { "watch.batch.history": value },
+      }),
+    ).toThrow();
+});
 const sample = (duration, outcome = "ok", name = "ui.diff-ready") => ({
   name,
   start: 0,

@@ -68,6 +68,23 @@ export function analyzeTrace(report) {
   return {
     window: report.window ?? null,
     startup: analyzeStartup(report.gauges?.startup),
+    watcher: [
+      "batch.history",
+      "batch.working",
+      "category.worktree",
+      "category.index",
+      "category.head",
+      "category.refs",
+      "category.objects",
+      "category.metadata",
+    ].flatMap((label) => {
+      const name = `watch.${label}`;
+      const batches = report.counters?.[name];
+      if (batches === undefined) return [];
+      if (!Number.isSafeInteger(batches) || batches < 0)
+        throw new Error(`Invalid watcher counter: ${name}.`);
+      return [{ name, batches }];
+    }),
     warnings,
     operations: [...groups]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -124,6 +141,12 @@ if (
         report.window ?? "Unknown measurement window",
       );
       for (const warning of report.warnings) console.log(warning);
+      if (report.watcher.length) {
+        console.log(
+          "Watcher counts cover the reset window and active repository at each event. Categories overlap: these count batches containing each category, not raw events. They do not count focus or periodic refreshes.",
+        );
+        console.table(report.watcher);
+      }
       if (report.startup) {
         console.log(
           "Startup ready in foreground:",
