@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { call } from "./api";
 import type { LineMark } from "./editorChanges";
 import { findLineMark } from "./lineMark";
-import { startSpan } from "./performance";
+import {
+  countEvent,
+  recordDuration,
+  startSpan,
+  type PerfSample,
+} from "./performance";
 
 export const changeGutterCSS = `
 [data-gutter] [data-main-change] { position: relative; }
@@ -66,8 +71,29 @@ export function useEditorChanges(
       { type: "module" },
     );
     worker.current = w;
-    w.onmessage = (event: MessageEvent<{ id: number; marks: LineMark[] }>) => {
-      if (event.data.id !== sequence.current) return;
+    w.onmessage = (
+      event: MessageEvent<{
+        id: number;
+        marks: LineMark[];
+        timing?: {
+          startedAt: number;
+          duration: number;
+          outcome: PerfSample["outcome"];
+        };
+      }>,
+    ) => {
+      const timing = event.data.timing;
+      if (timing)
+        recordDuration(
+          "editor.changes-compute",
+          timing.startedAt - performance.timeOrigin,
+          timing.duration,
+          timing.outcome,
+        );
+      if (event.data.id !== sequence.current) {
+        countEvent("editor.changes-stale");
+        return;
+      }
       marks.current = event.data.marks;
       paint();
     };

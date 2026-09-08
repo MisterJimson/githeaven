@@ -268,3 +268,21 @@ This deterministic CPU benchmark looks up markers for 200 visible lines near the
 Previously each visible line used a linear scan over all change ranges. Unchanged lines scanned the entire list, so even a viewport near the beginning paid for changes far below it. The lookup now binary-searches the first range whose end reaches the line, preserving first-match precedence at overlapping deletion anchors. Pierre's parsed ranges are emitted in file order; tests assert nondecreasing start/end coordinates and compare every line against linear lookup across 100 deterministic insertion/deletion/replacement diffs, plus explicit overlapping boundaries. Existing DOM tests still cover clearing markers, keeping gutter nodes and ignoring stale worker results.
 
 On this machine, the 10,000-range bottom viewport fell from **1.455ms median / 1.917ms p95** to **0.0046ms / 0.0053ms** for lookup alone. The middle viewport fell from 1.009ms to 0.0046ms median. All 12 complete output hashes matched. These synthetic stress results establish improved scaling of marker lookup; native typing and scrolling improvements remain to be measured rather than inferred from the CPU ratio.
+
+## Editor change calculation
+
+```sh
+pnpm perf:editor-changes /tmp/editor-changes.json
+```
+
+The benchmark calls the production marker calculation for 1,000-, 10,000- and 30,000-line synthetic files: clean, one-line replacement, edits every 20 lines, and entirely new files. Each case records its first call, three warmups, 20 measured calls, input character count, marker count and complete output hash. Clean inputs are separately reconstructed. This isolates calculation CPU; worker startup, message copies, debounce, DOM work and presentation are excluded.
+
+Native traces now include `editor.changes-compute`, measured inside the worker with its time origin translated to the page clock. It includes completed obsolete calculations; `editor.changes-stale` counts replies discarded because a newer edit already exists. Terminated workers cannot report unfinished calculations. Errors are recorded as errors and retain the previous behavior of returning no markers. These metrics distinguish expensive calculations from main-thread gutter decoration without exporting source text.
+
+Clean files now return immediately after string equality. Files absent from main or with an empty baseline count lines directly, including trailing-newline handling. Modified files retain Pierre's full parsing/alignment semantics. A direct `diffLines` prototype failed compatibility checks because Pierre additionally aligns unequal replacement blocks by similarity; it was not adopted.
+
+For 30,000 lines on this machine, clean calculation fell from **13.111ms median to 0.027ms**, and new-file calculation from **30.666ms to 0.278ms**. All 12 benchmark output hashes matched. Another 510 compatibility cases compare against the prior Pierre-based extraction, covering Unicode, CRLF/LF, missing final newlines, empty files, repeated lines and mixed edits.
+
+Scattered modifications remain expensive: 30,000 lines measured 498ms median before and 519ms after, with broad timing variation. That path still uses the same algorithm; this change makes no improvement claim for it. Native typing measurements, worker queue control and incremental calculation remain necessary follow-up work.
+
+Validation note: the first full run intermittently failed the existing App test for keeping an unsaved edit when cancelling a project switch (the mocked editor showed original contents). It passed in isolation and on the complete rerun (96 frontend / 15 Rust tests). App and its editor mock were unchanged by this optimization; the cause is not established and remains a test-stability/unsaved-edit investigation item.

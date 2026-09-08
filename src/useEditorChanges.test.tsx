@@ -2,6 +2,7 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEditorChanges } from "./useEditorChanges";
+import { clearPerformanceSamples, performanceReport } from "./performance";
 vi.mock("./api", () => ({ call: vi.fn().mockResolvedValue("base\n") }));
 class Background {
   static instances: Background[] = [];
@@ -15,6 +16,7 @@ class Background {
 afterEach(() => {
   vi.unstubAllGlobals();
   Background.instances = [];
+  clearPerformanceSamples();
 });
 it("decorates virtualized gutters without replacing text and ignores stale results", async () => {
   vi.stubGlobal("Worker", Background);
@@ -49,12 +51,26 @@ it("decorates virtualized gutters without replacing text and ignores stale resul
   const w = Background.instances[0];
   await waitFor(() => expect(w.postMessage).toHaveBeenCalled());
   const first = w.postMessage.mock.lastCall![0].id;
+  const computeStart = performance.now();
   act(() =>
     w.onmessage?.({
-      data: { id: first, marks: [{ start: 1, end: 1, kind: "modified" }] },
+      data: {
+        id: first,
+        marks: [{ start: 1, end: 1, kind: "modified" }],
+        timing: {
+          startedAt: performance.timeOrigin + computeStart,
+          duration: 12,
+          outcome: "ok",
+        },
+      },
     }),
   );
   expect(row.dataset.mainChange).toBe("modified");
+  const sample = performanceReport().samples.find(
+    (s) => s.name === "editor.changes-compute",
+  );
+  expect(sample?.duration).toBe(12);
+  expect(sample?.start).toBeCloseTo(computeStart, 2);
   act(() => update("base\n"));
   act(() =>
     w.onmessage?.({
@@ -62,6 +78,7 @@ it("decorates virtualized gutters without replacing text and ignores stale resul
     }),
   );
   expect(row.dataset.mainChange).toBe("modified");
+  expect(performanceReport().counters["editor.changes-stale"]).toBe(1);
   await waitFor(() =>
     expect(w.postMessage.mock.lastCall![0].id).toBeGreaterThan(first),
   );
