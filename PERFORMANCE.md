@@ -159,3 +159,35 @@ The repeatable Node benchmark measured the primary TypeScript input at 134.44ms 
 Native after-change navigation measured **16ms median, 43ms p95, 52ms maximum over 29 opens**. The earlier run measured 15ms median/222ms p95 over 25 opens. Two new billing files appeared in the working tree between runs; the after sequence traversed the same range plus those two files in each direction. This is live evidence of lower selection latency, not a controlled percentage speedup. Highlight priming still reached 195ms, but was completed speculatively before those selections. The source cache held 24 entries / 1,447,400 estimated bytes at export; the AST cache held 24 entries. The capture was stopped and the app returned to the graph.
 
 A native resource snapshot after this run reported **835.6MiB combined physical footprint**, about 758MiB in WebContent, with a roughly 919MiB WebContent peak. This is a remaining concern, not a memory success claim. Session length, watch activity, selected files, and garbage collection differ from earlier snapshots; fixed-workload before/after memory measurements are needed before attributing the difference to the larger neighbor allowance. Use the resource collector alongside latency traces, and investigate sustained allocation/cache behavior rather than treating source-byte gauges as total memory.
+
+## Fixed workload and memory sampling
+
+```sh
+pnpm perf:fixture
+# Open the printed disposable directory in Githeaven.
+pnpm perf:resources /tmp/graph-idle.json
+pnpm perf:resource-series /tmp/settled.json 7 5
+```
+
+`perf:fixture` always creates a new temporary repository with no remote, one deterministic baseline commit, and 32 modified TypeScript files. Eight have 60 lines and 24 have 600 lines; changes are small while full-file syntax work is substantial. The `.git/githeaven-performance-fixture.json` manifest records before/after byte lengths and SHA-256 hashes plus a navigation recipe. Two independently generated repositories were verified to have identical manifests and exactly 32 modified tracked files. It never resets an existing directory or copies user source. Generated repositories and reports stay outside this project.
+
+For an isolated run, record existing project tabs and ensure there are no unsaved drafts, open only the fixture, and restart the release app. Record graph idle, select file-00, move down 23 files and up 23 with an observation after every key, return to the graph, and record settled memory. Restore original project tabs afterward. The initial selection plus keyboard traversal is 47 actions; use actual completed foreground timing counts from the trace rather than assuming every action yielded a sample.
+
+The timed collector takes 2–600 samples with 1–60 seconds between collections, defaults to seven samples five seconds apart, and writes progress after every completed sample. Partial runs have `complete: false`. It flags process-set changes and incomplete attribution, so a restarted app is not silently treated as continuous memory growth. Collection itself adds overhead; intervals are delays between collections, not exact fixed-rate timestamps. Avoid builds and other benchmarks during a run.
+
+Resource schema v2 adds selected OS allocation categories for each process: WebKit malloc, JS JIT code, JS VM Gigacage, and owned graphics footprint where available. Categories include dirty, swapped, and reclaimable bytes. They are diagnostic categories, not additive physical-footprint components; compressed/swapped accounting differs from RSS. Missing categories are omitted, not reported as zero. No mappings, addresses, source, or process arguments are exported.
+
+### Fixed-workload baseline, release c2a9850
+
+On the same Mac with the fixture as the only open project:
+
+| Phase                                        | Combined physical footprint |
+| -------------------------------------------- | --------------------------- |
+| Fresh graph idle                             | 355.5 MiB                   |
+| After forward navigation                     | 583.6 MiB                   |
+| After reverse navigation and return to graph | 514.7 MiB                   |
+| Later seven-sample idle series               | 605.6–606.4 MiB             |
+
+The idle series used the same processes throughout with complete attribution and stabilized near 606.3MiB over 30 seconds. The final WebContent categories included about 403MiB dirty and 358MiB swapped WebKit malloc; these are not figures to add to the combined footprint. This short run neither proves nor excludes a leak, and the changing idle figures show why a single RSS or physical-footprint snapshot is insufficient.
+
+The trace recorded 46 completed diff-ready samples at 12ms median, 15ms p95, and 17ms maximum. At export, the source cache held 24 entries / 3,802,464 estimated bytes and the AST cache held 24 entries, with no queued or active workers. Source retention is bounded, but does not explain total WebKit memory. Subsequent optimization should compare repeated identical navigation cycles and allocation categories, retaining both latency and memory evidence. The original `terminal` and `githeaven` tabs were restored, with `terminal` selected and capture stopped.

@@ -50,17 +50,12 @@ try {
   const file = join(directory, "footprint.json");
   execFileSync(
     "footprint",
-    [
-      ...processes.flatMap((p) => ["-p", String(p.pid)]),
-      "--noCategories",
-      "-j",
-      file,
-    ],
+    [...processes.flatMap((p) => ["-p", String(p.pid)]), "-j", file],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
   const footprint = JSON.parse(readFileSync(file, "utf8"));
   const report = {
-    version: 1,
+    version: 2,
     capturedAt: new Date().toISOString(),
     platform: process.platform,
     arch: process.arch,
@@ -72,6 +67,28 @@ try {
       );
       return {
         ...process,
+        categories: Object.fromEntries(
+          [
+            "WebKit malloc",
+            "JS JIT generated code",
+            "JS VM Gigacage",
+            "Owned physical footprint (unmapped) (graphics)",
+          ].flatMap((name) => {
+            const category = memory?.categories?.[name];
+            return category
+              ? [
+                  [
+                    name,
+                    {
+                      dirtyBytes: category.dirty,
+                      swappedBytes: category.swapped,
+                      reclaimableBytes: category.reclaimable,
+                    },
+                  ],
+                ]
+              : [];
+          }),
+        ),
         physicalFootprintBytes: memory?.auxiliary?.phys_footprint ?? null,
         peakPhysicalFootprintBytes:
           memory?.auxiliary?.phys_footprint_peak ?? null,
@@ -85,7 +102,9 @@ try {
       !!footprint.warnings?.length ||
       (footprint.processes?.length ?? 0) !== processes.length,
   };
-  console.table(report.processes);
+  console.table(
+    report.processes.map(({ categories: _categories, ...row }) => row),
+  );
   console.log(
     `Combined footprint: ${(report.combinedFootprintBytes / 1024 ** 2).toFixed(1)} MiB; incomplete: ${report.incomplete}`,
   );

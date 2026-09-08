@@ -19,7 +19,9 @@
     "perf:backend": "cargo run --release --manifest-path src-tauri/Cargo.toml --example performance --",
     "perf:resources": "node scripts/profile-resources.mjs",
     "perf:trace": "node scripts/analyze-trace.mjs",
-    "perf:highlight": "node scripts/benchmark-highlight.mjs"
+    "perf:highlight": "node scripts/benchmark-highlight.mjs",
+    "perf:fixture": "node scripts/create-performance-fixture.mjs",
+    "perf:resource-series": "node scripts/profile-resource-series.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
