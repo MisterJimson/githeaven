@@ -57,17 +57,7 @@ export function authorDetails(commit: Commit, login?: string) {
     commit.oid.slice(0, 12),
   ].join("\n");
 }
-export function CommitNode({
-  root,
-  commit,
-  x,
-  color,
-}: {
-  root?: string;
-  commit: Commit;
-  x: number;
-  color: string;
-}) {
+function useCommitAvatar(root: string | undefined, commit: Commit) {
   const [avatar, setAvatar] = useState<Avatar | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -86,6 +76,41 @@ export function CommitNode({
       clearTimeout(timer);
     };
   }, [root, commit.oid, commit.author_email]);
+  return { avatar, failed, setFailed };
+}
+
+export function CommitAvatar({
+  root,
+  commit,
+}: {
+  root?: string;
+  commit: Commit;
+}) {
+  const { avatar, failed, setFailed } = useCommitAvatar(root, commit);
+  const title = authorDetails(commit, avatar?.login);
+  return (
+    <div className="commit-avatar" role="img" aria-label={title} title={title}>
+      {avatar && !failed ? (
+        <img src={avatar.url} alt="" onError={() => setFailed(true)} />
+      ) : (
+        commit.author.slice(0, 2).toUpperCase()
+      )}
+    </div>
+  );
+}
+
+export function CommitNode({
+  root,
+  commit,
+  x,
+  color,
+}: {
+  root?: string;
+  commit: Commit;
+  x: number;
+  color: string;
+}) {
+  const { avatar, failed, setFailed } = useCommitAvatar(root, commit);
   const show = avatar && !failed;
   const title = authorDetails(commit, avatar?.login);
   return (

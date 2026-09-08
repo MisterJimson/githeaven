@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { CommitNode, authorDetails } from "./CommitNode";
+import { CommitNode, CommitAvatar, authorDetails } from "./CommitNode";
 import { call } from "./api";
 vi.mock("./api", () => ({ call: vi.fn() }));
 afterEach(() => {
@@ -89,4 +89,35 @@ it("does not let an unpublished commit prevent another commit matching the same 
   );
   await waitFor(() => expect(container.querySelector("image")).not.toBeNull());
   expect(call).toHaveBeenCalledTimes(2);
+});
+
+it("shares the GitHub avatar between graph and details and retains the details fallback", async () => {
+  vi.mocked(call).mockResolvedValue({
+    login: "ada",
+    url: "https://avatars.githubusercontent.com/u/1",
+  });
+  const { container } = render(
+    <>
+      <svg>
+        <CommitNode
+          root="/shared-details"
+          commit={commit}
+          x={22}
+          color="blue"
+        />
+      </svg>
+      <CommitAvatar root="/shared-details" commit={commit} />
+    </>,
+  );
+  const details = container.querySelector(".commit-avatar")!;
+  expect(details.textContent).toBe("AD");
+  await waitFor(() => expect(details.querySelector("img")).not.toBeNull());
+  expect(details.querySelector("img")!.getAttribute("src")).toBe(
+    container.querySelector("image")!.getAttribute("href"),
+  );
+  expect(call).toHaveBeenCalledTimes(1);
+  expect(details.getAttribute("title")).toContain("(@ada)");
+  fireEvent.error(details.querySelector("img")!);
+  expect(details.textContent).toBe("AD");
+  expect(container.querySelector(".commit-avatar")).toBe(details);
 });

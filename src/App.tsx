@@ -1,3 +1,4 @@
+import { CommitAvatar } from "./CommitNode";
 import {
   lazy,
   Suspense,
@@ -2109,9 +2110,11 @@ export function App() {
                             {selected && (
                               <>
                                 <div className="commit-details">
-                                  <div className="commit-avatar">
-                                    {selected.author.slice(0, 2).toUpperCase()}
-                                  </div>
+                                  <CommitAvatar
+                                    key={`${repo.root}:${selected.oid}`}
+                                    root={repo.root}
+                                    commit={selected}
+                                  />
                                   <div className="commit-text">
                                     <strong>{selected.subject}</strong>
                                     <span>
