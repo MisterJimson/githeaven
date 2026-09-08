@@ -58,25 +58,37 @@ export function authorDetails(commit: Commit, login?: string) {
   ].join("\n");
 }
 function useCommitAvatar(root: string | undefined, commit: Commit) {
-  const [avatar, setAvatar] = useState<Avatar | null>(null);
-  const [failed, setFailed] = useState(false);
+  const identity = JSON.stringify([root, commit.oid, commit.author_email]);
+  const known = root
+    ? (authors.get(JSON.stringify([root, commit.author_email || commit.oid])) ??
+      null)
+    : null;
+  const [resolved, setResolved] = useState<{
+    identity: string;
+    avatar: Avatar | null;
+  } | null>(null);
+  const [failedIdentity, setFailedIdentity] = useState<string | null>(null);
+  const avatar =
+    known ?? (resolved?.identity === identity ? resolved.avatar : null);
   useEffect(() => {
-    setAvatar(null);
-    setFailed(false);
-    if (!root) return;
+    if (!root || known) return;
     let active = true;
-    // Keep identity lookups off the first graph paint and avoid requests for rows scrolled past quickly.
+    // Delay only uncached identity lookups; cached avatars render synchronously.
     const timer = setTimeout(() => {
       void lookup(root, commit).then((value) => {
-        if (active) setAvatar(value);
+        if (active) setResolved({ identity, avatar: value });
       });
     }, 100);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [root, commit.oid, commit.author_email]);
-  return { avatar, failed, setFailed };
+  }, [root, commit.oid, commit.author_email, identity, known]);
+  return {
+    avatar,
+    failed: failedIdentity === identity,
+    setFailed: (failed: boolean) => setFailedIdentity(failed ? identity : null),
+  };
 }
 
 export function CommitAvatar({

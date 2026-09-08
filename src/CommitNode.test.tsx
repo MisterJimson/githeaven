@@ -121,3 +121,40 @@ it("shares the GitHub avatar between graph and details and retains the details f
   expect(details.textContent).toBe("AD");
   expect(container.querySelector(".commit-avatar")).toBe(details);
 });
+
+it("renders graph-cached avatars immediately in details without an initials frame", async () => {
+  vi.mocked(call).mockResolvedValue({
+    login: "ada",
+    url: "https://avatars.githubusercontent.com/u/1",
+  });
+  const { container, rerender } = render(
+    <svg>
+      <CommitNode root="/instant-avatar" commit={commit} x={22} color="blue" />
+    </svg>,
+  );
+  await waitFor(() => expect(container.querySelector("image")).not.toBeNull());
+  rerender(<CommitAvatar root="/instant-avatar" commit={commit} />);
+  expect(container.querySelector(".commit-avatar img")).not.toBeNull();
+  expect(container.querySelector(".commit-avatar")!.textContent).toBe("");
+  rerender(
+    <CommitAvatar
+      root="/instant-avatar"
+      commit={{ ...commit, oid: "d".repeat(40) }}
+    />,
+  );
+  expect(container.querySelector(".commit-avatar img")).not.toBeNull();
+  rerender(
+    <CommitAvatar
+      root="/instant-avatar"
+      commit={{
+        ...commit,
+        oid: "e".repeat(40),
+        author: "Other",
+        author_email: "other@example.com",
+      }}
+    />,
+  );
+  expect(container.querySelector(".commit-avatar img")).toBeNull();
+  expect(container.querySelector(".commit-avatar")!.textContent).toBe("OT");
+  expect(call).toHaveBeenCalledTimes(1);
+});
