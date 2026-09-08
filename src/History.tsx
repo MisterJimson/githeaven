@@ -137,6 +137,42 @@ export const History = memo(function History({
         ref={scroll}
         role="listbox"
         aria-label="Commit history"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (
+            !active ||
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.altKey ||
+            event.shiftKey ||
+            (event.key !== "ArrowUp" && event.key !== "ArrowDown") ||
+            !entries.length
+          )
+            return;
+          event.preventDefault();
+          const current =
+            workingSelected && hasWorkingChanges
+              ? 0
+              : entries.findIndex((commit) => commit.oid === selected);
+          const next =
+            current < 0
+              ? 0
+              : Math.max(
+                  0,
+                  Math.min(
+                    entries.length - 1,
+                    current + (event.key === "ArrowDown" ? 1 : -1),
+                  ),
+                );
+          // Keep keyboard focus stable when the previous row is virtualized away.
+          event.currentTarget.focus({ preventScroll: true });
+          virtual.scrollToIndex(next, { align: "auto" });
+          if (next === current) return;
+          if (hasWorkingChanges && next === 0) onSelectWorking();
+          else onSelect(entries[next]);
+        }}
         onScroll={(event) => {
           if (headingScroll.current)
             headingScroll.current.scrollLeft = event.currentTarget.scrollLeft;

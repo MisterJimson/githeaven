@@ -145,3 +145,64 @@ it("handles branch badges independently of commit rows", () => {
   expect(onCheckoutRef).toHaveBeenCalledWith(local);
   expect(onSelect).not.toHaveBeenCalled();
 });
+
+it("selects adjacent commits with arrows, including WIP, without scrolling the page", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  const scrollTo = vi.fn();
+  const commits = Array.from({ length: 100 }, (_, index) => ({
+    oid: `commit-${index}`,
+    parents: index < 99 ? [`commit-${index + 1}`] : [],
+    subject: `Commit ${index}`,
+    author: "A",
+    timestamp: 100 - index,
+  }));
+  const onSelect = vi.fn();
+  const onSelectWorking = vi.fn();
+  const props = {
+    commits,
+    refs: [],
+    head: commits[0].oid,
+    branch: "main",
+    workingCount: 1,
+    workingSelected: true,
+    onSelect,
+    onSelectWorking,
+  };
+  const { rerender } = render(<History {...props} />);
+  const viewport = screen.getByRole("listbox", { name: "Commit history" });
+  viewport.scrollTo = scrollTo;
+  expect(fireEvent.keyDown(viewport, { key: "ArrowDown" })).toBe(false);
+  expect(onSelect).toHaveBeenLastCalledWith(commits[0]);
+  expect(document.activeElement).toBe(viewport);
+  rerender(
+    <History {...props} workingSelected={false} selected={commits[0].oid} />,
+  );
+  fireEvent.keyDown(screen.getAllByRole("option")[1], { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith(commits[1]);
+  fireEvent.keyDown(viewport, { key: "ArrowUp" });
+  expect(onSelectWorking).toHaveBeenCalledOnce();
+  // Navigation uses the complete history, not just currently mounted rows.
+  rerender(
+    <History {...props} workingSelected={false} selected={commits[70].oid} />,
+  );
+  fireEvent.keyDown(viewport, { key: "ArrowDown" });
+  expect(onSelect).toHaveBeenLastCalledWith(commits[71]);
+  expect(scrollTo).toHaveBeenCalled();
+  rerender(
+    <History
+      {...props}
+      workingCount={0}
+      workingSelected={false}
+      selected={commits[99].oid}
+    />,
+  );
+  onSelect.mockClear();
+  fireEvent.keyDown(viewport, { key: "ArrowDown" });
+  expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.keyDown(viewport, { key: "ArrowUp", metaKey: true });
+  expect(onSelect).not.toHaveBeenCalled();
+  rerender(<History {...props} active={false} />);
+  fireEvent.keyDown(viewport, { key: "ArrowDown" });
+  expect(onSelect).not.toHaveBeenCalled();
+});
