@@ -1648,3 +1648,17 @@ kbd {
 .branch-row > svg {
   flex-shrink: 0;
 }
+
+.push-after-commit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.push-after-commit input {
+  margin: 0;
+  accent-color: var(--mint);
+}

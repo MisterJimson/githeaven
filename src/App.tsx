@@ -151,6 +151,9 @@ export function App() {
   const [stageOperations, setStageOperations] = useState<QueuedStage[]>([]);
   const [indexPending, setIndexPending] = useState(false);
   const [reviewKind, setReviewKind] = useState<"working" | "commit">("working");
+  const [pushAfterCommit, setPushAfterCommit] = useState(
+    () => localStorage.getItem("githeaven.push-after-commit") === "true",
+  );
   const [commitFilesView, setCommitFilesView] = useState<"path" | "tree">(() =>
     localStorage.getItem("githeaven.commit-files-view") === "tree"
       ? "tree"
@@ -1171,6 +1174,16 @@ export function App() {
       setNotice("Commit created");
       await refresh(true);
       setChangeSelection(null);
+      if (pushAfterCommit) {
+        setBusy("Pushing");
+        try {
+          await call("push_branch", { root: repo.root });
+          setNotice("Commit created and pushed");
+          await refresh(true);
+        } catch (e) {
+          setError(`Commit created locally, but push failed: ${errorText(e)}`);
+        }
+      }
     } catch (e) {
       report(e);
     } finally {
@@ -1984,6 +1997,22 @@ export function App() {
                                   }
                                 />
                               </div>
+                              <label className="push-after-commit">
+                                <input
+                                  type="checkbox"
+                                  checked={pushAfterCommit}
+                                  disabled={!!busy}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+                                    setPushAfterCommit(checked);
+                                    localStorage.setItem(
+                                      "githeaven.push-after-commit",
+                                      String(checked),
+                                    );
+                                  }}
+                                />
+                                Push after committing
+                              </label>
                               <button
                                 className="primary-button"
                                 disabled={
@@ -2000,11 +2029,13 @@ export function App() {
                                 <GitCommitHorizontal size={15} />
                                 {busy === "Committing"
                                   ? "Committing…"
-                                  : !stagedChanges.length
-                                    ? "Stage files to commit"
-                                    : !message.trim()
-                                      ? "Write a summary to commit"
-                                      : `Commit ${stagedChanges.length} ${stagedChanges.length === 1 ? "file" : "files"}`}
+                                  : busy === "Pushing"
+                                    ? "Pushing…"
+                                    : !stagedChanges.length
+                                      ? "Stage files to commit"
+                                      : !message.trim()
+                                        ? "Write a summary to commit"
+                                        : `Commit ${stagedChanges.length} ${stagedChanges.length === 1 ? "file" : "files"}`}
                               </button>
                             </div>
                           </div>

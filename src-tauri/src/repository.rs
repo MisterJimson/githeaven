@@ -98,6 +98,11 @@ pub fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
     String::from_utf8(git(root, args)?)
         .map_err(|_| "Non-UTF-8 Git output is not supported in this prototype.".into())
 }
+pub fn push(root: &Path) -> Result<(), String> {
+    // Honor the repository's configured remote/upstream and credential helpers.
+    // Never force a push or silently choose a remote for a new branch.
+    git(root, &["push"]).map(|_| ())
+}
 pub fn discover(path: &str) -> Result<PathBuf, String> {
     let root = git_text(Path::new(path), &["rev-parse", "--show-toplevel"])?;
     fs::canonicalize(root.trim_end_matches(['\n', '\r'])).map_err(|e| e.to_string())
@@ -690,6 +695,50 @@ mod tests {
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
     }
+    #[test]
+    fn push_uses_upstream_and_preserves_local_commit_on_rejection() {
+        let local = repo();
+        let remote = tempfile::tempdir().unwrap();
+        let r = local.path();
+        git(remote.path(), &["init", "--bare", "-b", "main"]).unwrap();
+        git(r, &["config", "push.default", "simple"]).unwrap();
+        git(
+            r,
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .unwrap();
+        git(r, &["config", "branch.main.remote", "origin"]).unwrap();
+        git(r, &["config", "branch.main.merge", "refs/heads/main"]).unwrap();
+        git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        push(r).unwrap();
+        let base = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(
+            git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
+            base
+        );
+        let other = repo();
+        git(
+            other.path(),
+            &["fetch", remote.path().to_str().unwrap(), "main"],
+        )
+        .unwrap();
+        git(other.path(), &["reset", "--hard", "FETCH_HEAD"]).unwrap();
+        git(other.path(), &["commit", "--allow-empty", "-m", "Other"]).unwrap();
+        git(
+            other.path(),
+            &["push", remote.path().to_str().unwrap(), "HEAD:main"],
+        )
+        .unwrap();
+        git(r, &["commit", "--allow-empty", "-m", "Local"]).unwrap();
+        let local_head = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        assert!(push(r).is_err());
+        assert_eq!(git_text(r, &["rev-parse", "HEAD"]).unwrap(), local_head);
+        assert_eq!(
+            git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
+            git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
+        );
+    }
+
     #[test]
     fn blob_reader_handles_unusual_paths_empty_and_missing_files() {
         let dir = repo();

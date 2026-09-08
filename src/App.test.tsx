@@ -1361,3 +1361,106 @@ it("pauses hidden Git prefetch and diff refresh in Edit, then resumes when Git i
   });
   expect(screen.getByTestId("diff-worktree")).toBeTruthy();
 });
+
+it("remembers push-after-commit and pushes only after the commit succeeds", async () => {
+  await openWorkspace({
+    changes: [
+      { path: "changed.txt", index: "M", worktree: " ", original_path: null },
+    ],
+  });
+  const checkbox = screen.getByRole("checkbox", {
+    name: "Push after committing",
+  }) as HTMLInputElement;
+  expect(checkbox.checked).toBe(false);
+  fireEvent.click(checkbox);
+  expect(localStorage.getItem("githeaven.push-after-commit")).toBe("true");
+  cleanup();
+  localStorage.removeItem("githeaven:last-repo");
+  await openWorkspace({
+    changes: [
+      { path: "changed.txt", index: "M", worktree: " ", original_path: null },
+    ],
+  });
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "Push after committing",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  const snapshot = await vi.mocked(call).mock.results.at(-1)!.value;
+  const created = deferred<void>();
+  const pushed = deferred<void>();
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "create_commit") return created.promise;
+    if (command === "push_branch") return pushed.promise;
+    if (command === "refresh_repository") return { ...snapshot, changes: [] };
+    throw new Error(command);
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Commit summary" }), {
+    target: { value: "Example" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Commit 1 file" }));
+  expect(call).not.toHaveBeenCalledWith("push_branch", expect.anything());
+  await act(async () => created.resolve());
+  await screen.findByRole("button", { name: "Pushing…" });
+  expect(call).toHaveBeenCalledWith("push_branch", { root: "/sample" });
+  await act(async () => pushed.resolve());
+  await screen.findByText("Commit created and pushed");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Push after committing" }),
+  );
+  expect(localStorage.getItem("githeaven.push-after-commit")).toBe("false");
+});
+
+it.each(["commit", "push", "unchecked"])(
+  "handles %s without losing or repeating the commit",
+  async (scenario) => {
+    localStorage.setItem(
+      "githeaven.push-after-commit",
+      String(scenario !== "unchecked"),
+    );
+    await openWorkspace({
+      changes: [
+        { path: "changed.txt", index: "M", worktree: " ", original_path: null },
+      ],
+    });
+    const snapshot = await vi.mocked(call).mock.results[0].value;
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "create_commit") {
+        if (scenario === "commit") throw new Error("Commit hook failed");
+        return undefined;
+      }
+      if (command === "push_branch") throw new Error("Remote rejected push");
+      if (command === "refresh_repository") return { ...snapshot, changes: [] };
+      throw new Error(command);
+    });
+    const summary = screen.getByRole("textbox", {
+      name: "Commit summary",
+    }) as HTMLInputElement;
+    fireEvent.change(summary, { target: { value: "Example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit 1 file" }));
+    if (scenario === "commit") {
+      await screen.findByText(/Commit hook failed/);
+      expect(summary.value).toBe("Example");
+    } else if (scenario === "push") {
+      await screen.findByText(
+        /Commit created locally, but push failed:.*Remote rejected push/,
+      );
+      expect(summary.value).toBe("");
+    } else {
+      await screen.findByText("Commit created");
+      expect(summary.value).toBe("");
+    }
+    expect(
+      vi
+        .mocked(call)
+        .mock.calls.filter(([command]) => command === "create_commit"),
+    ).toHaveLength(1);
+    expect(
+      vi
+        .mocked(call)
+        .mock.calls.filter(([command]) => command === "push_branch"),
+    ).toHaveLength(scenario === "push" ? 1 : 0);
+  },
+);
