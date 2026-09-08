@@ -28,6 +28,7 @@ export function useEditorChanges(
   const marks = useRef<LineMark[]>([]);
   const input = useRef(contents);
   const baseline = useRef<string | null | undefined>(undefined);
+  const calculationFailed = useRef(false);
   const worker = useRef<Worker | null>(null);
   const sequence = useRef(0);
   const inFlight = useRef<number | null>(null);
@@ -84,6 +85,7 @@ export function useEditorChanges(
   );
   useEffect(() => {
     baseline.current = undefined;
+    calculationFailed.current = false;
     inFlight.current = null;
     ready.current = null;
     marks.current = [];
@@ -118,6 +120,7 @@ export function useEditorChanges(
       if (event.data.id !== sequence.current) {
         countEvent("editor.changes-stale");
       } else {
+        calculationFailed.current = timing?.outcome === "error";
         marks.current = event.data.marks;
         paint();
       }
@@ -157,6 +160,10 @@ export function useEditorChanges(
     call<string | null>("main_file", { root, path })
       .then((value) => {
         if (!active) return;
+        if (baseline.current === value && !calculationFailed.current) {
+          countEvent("editor.changes-unchanged-baseline");
+          return;
+        }
         baseline.current = value;
         schedule(input.current);
       })

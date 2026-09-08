@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEditorChanges } from "./useEditorChanges";
+import { call } from "./api";
 import { clearPerformanceSamples, performanceReport } from "./performance";
 vi.mock("./api", () => ({ call: vi.fn().mockResolvedValue("base\n") }));
 class Background {
@@ -25,6 +26,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Background.instances = [];
   clearPerformanceSamples();
+  vi.mocked(call).mockReset().mockResolvedValue("base\n");
 });
 it("decorates virtualized gutters without replacing text and ignores stale results", async () => {
   vi.stubGlobal("Worker", Background);
@@ -176,4 +178,73 @@ it("drops pending work on file switches and ignores late replies from terminated
   act(() => vi.advanceTimersByTime(120));
   expect(current.postMessage).toHaveBeenCalledTimes(1);
   expect(current.terminate).toHaveBeenCalledTimes(1);
+});
+
+it("reuses markers across unchanged repository refreshes and recalculates when main changes", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", Background);
+  const { rerender } = renderHook(
+    ({ refresh }) =>
+      useEditorChanges("repo", "a.txt", "working contents", 1, refresh),
+    { initialProps: { refresh: 0 } },
+  );
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  const worker = Background.instances[0];
+  const complete = () =>
+    act(() =>
+      worker.onmessage?.({
+        data: {
+          id: worker.postMessage.mock.lastCall![0].id,
+          marks: [],
+        },
+      }),
+    );
+  complete();
+  for (let refresh = 1; refresh <= 10; refresh++) {
+    rerender({ refresh });
+    await act(async () => {});
+    act(() => vi.advanceTimersByTime(120));
+    complete();
+  }
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  expect(
+    performanceReport().counters["editor.changes-unchanged-baseline"],
+  ).toBe(10);
+  vi.mocked(call).mockResolvedValueOnce("new main contents");
+  rerender({ refresh: 11 });
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+  expect(worker.postMessage.mock.lastCall![0].old).toBe("new main contents");
+});
+
+it("retries a failed calculation even when a refresh returns the same baseline", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", Background);
+  const { rerender } = renderHook(
+    ({ refresh }) =>
+      useEditorChanges("repo", "a.txt", "working contents", 1, refresh),
+    { initialProps: { refresh: 0 } },
+  );
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  const worker = Background.instances[0];
+  act(() =>
+    worker.onmessage?.({
+      data: {
+        id: worker.postMessage.mock.lastCall![0].id,
+        marks: [],
+        timing: {
+          startedAt: performance.timeOrigin + performance.now(),
+          duration: 1,
+          outcome: "error",
+        },
+      },
+    }),
+  );
+  rerender({ refresh: 1 });
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
 });
