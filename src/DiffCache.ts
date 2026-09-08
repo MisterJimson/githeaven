@@ -5,6 +5,7 @@ import type { Selection, Versions } from "./types";
 export interface HighlightPool {
   primeDiffHighlightCache(diff: FileDiffMetadata): Promise<void>;
   getDiffResultCache?(diff: FileDiffMetadata): unknown;
+  evictDiffFromCache?(cacheKey: string): boolean;
 }
 export interface PreparedDiff {
   versions: Versions;
@@ -228,6 +229,15 @@ export class DiffCache {
           bytes: 2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)),
         };
         if (this.pending.get(key) === task && value.bytes <= 6 * 1024 * 1024) {
+          // The replacement is fully highlighted. Retire only the old syntax
+          // version now, preserving it while reads/highlighting were in flight.
+          const retired = this.entries.get(key)?.diff.cacheKey;
+          if (
+            retired &&
+            retired !== diff.cacheKey &&
+            this.pool.evictDiffFromCache?.(retired)
+          )
+            countEvent("diff.cache.retired-highlight");
           this.deferred.delete(key);
           this.entries.delete(key);
           this.entries.set(key, value);

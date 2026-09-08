@@ -131,3 +131,73 @@ it("retries a deferred file when it becomes an immediate neighbor, keeping the b
   ).rejects.toThrow("deferred");
   expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
 });
+
+it("retires obsolete syntax versions only after the replacement is ready", async () => {
+  const syntax = new Map();
+  const pool = {
+    primeDiffHighlightCache: vi.fn(async (diff) => {
+      syntax.set(diff.cacheKey, {});
+    }),
+    getDiffResultCache: (diff: { cacheKey?: string }) =>
+      syntax.get(diff.cacheKey),
+    evictDiffFromCache: vi.fn((key: string) => syntax.delete(key)),
+  };
+  const cache = new DiffCache(pool);
+  const first = await cache.prepare("repo", selection, 1);
+  let complete!: () => void;
+  pool.primeDiffHighlightCache.mockImplementationOnce(
+    (diff) =>
+      new Promise<void>((resolve) => {
+        complete = () => {
+          syntax.set(diff.cacheKey, {});
+          resolve();
+        };
+      }),
+  );
+  vi.mocked(call).mockResolvedValue({
+    old: "old",
+    new: "updated",
+    elapsed_ms: 1,
+  });
+  const next = cache.prepare("repo", selection, 2);
+  await vi.waitFor(() => expect(complete).toBeDefined());
+  expect(cache.peek("repo", selection)).toBe(first);
+  expect(syntax.has(first.diff.cacheKey)).toBe(true);
+  complete();
+  const second = await next;
+  expect(syntax.has(first.diff.cacheKey)).toBe(false);
+  expect(syntax.has(second.diff.cacheKey)).toBe(true);
+  await cache.prepare("repo", selection, 3);
+  expect(pool.evictDiffFromCache).toHaveBeenCalledTimes(1);
+  for (let refresh = 4; refresh < 30; refresh++) {
+    vi.mocked(call).mockResolvedValue({
+      old: "old",
+      new: `version-${refresh}`,
+      elapsed_ms: 1,
+    });
+    await cache.prepare("repo", selection, refresh);
+  }
+  expect(syntax.size).toBe(1);
+});
+
+it("preserves the previous syntax cache when replacement highlighting fails", async () => {
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+    evictDiffFromCache: vi.fn(),
+  };
+  const cache = new DiffCache(pool);
+  const first = await cache.prepare("repo", selection, 1);
+  vi.mocked(call).mockResolvedValue({
+    old: "old",
+    new: "updated",
+    elapsed_ms: 1,
+  });
+  pool.primeDiffHighlightCache.mockRejectedValueOnce(
+    new Error("worker failed"),
+  );
+  await expect(cache.prepare("repo", selection, 2)).rejects.toThrow(
+    "worker failed",
+  );
+  expect(pool.evictDiffFromCache).not.toHaveBeenCalled();
+  expect(cache.peek("repo", selection)).toBe(first);
+});
