@@ -1814,3 +1814,36 @@ kbd {
   height: 3px;
   opacity: 1;
 }
+.branch-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.branch-context-menu {
+  position: absolute;
+  width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--chrome);
+  box-shadow: 0 8px 24px #0008;
+}
+.branch-context-menu button {
+  width: 100%;
+  padding: 8px;
+  justify-content: flex-start;
+  border-radius: 3px;
+}
+.branch-context-menu button:hover {
+  background: var(--panel);
+}
+.branch-context-menu button[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.delete-branch-action {
+  color: #ffaaa4;
+  border: 1px solid #854840;
+  border-radius: 4px;
+  padding: 7px 12px;
+}

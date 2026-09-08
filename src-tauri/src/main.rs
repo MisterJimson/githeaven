@@ -398,6 +398,24 @@ async fn pull_branch(root: String, state: State<'_, Session>) -> Result<(), Stri
 }
 
 #[tauri::command]
+async fn delete_branch(
+    root: String,
+    name: String,
+    kind: String,
+    oid: String,
+    state: State<'_, Session>,
+) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let writes = state.writes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = writes.lock().map_err(|e| e.to_string())?;
+        repository::delete_branch(&root, &name, &kind, &oid)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn push_branch(root: String, state: State<'_, Session>) -> Result<(), String> {
     let root = state.checked(&root)?;
     let lock = state.writes.clone();
@@ -483,6 +501,7 @@ fn main() {
             checkout_branch,
             create_commit,
             push_branch,
+            delete_branch,
             pull_branch
         ])
         .run(tauri::generate_context!())

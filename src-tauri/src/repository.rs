@@ -687,6 +687,49 @@ pub fn stage_all(root: &Path, unstage: bool) -> Result<(), String> {
     Ok(())
 }
 
+pub fn delete_branch(root: &Path, name: &str, kind: &str, oid: &str) -> Result<(), String> {
+    validate_oid(oid)?;
+    let namespace = match kind {
+        "local" => "heads",
+        "remote" => "remotes",
+        _ => return Err("Choose a branch to delete.".into()),
+    };
+    let full = format!("refs/{namespace}/{name}");
+    git(root, &["check-ref-format", &full])?;
+    let actual = git_text(root, &["rev-parse", "--verify", &full])?;
+    if actual.trim() != oid {
+        return Err("Branch changed since it was selected. Reopen the menu and try again.".into());
+    }
+    if kind == "local" {
+        git(root, &["branch", "-d", "--", name])?;
+    } else {
+        if git(root, &["symbolic-ref", "-q", &full]).is_ok() {
+            return Err("A remote HEAD alias cannot be deleted.".into());
+        }
+        let remotes = git_text(root, &["remote"])?;
+        let remote = remotes
+            .lines()
+            .filter(|remote| name.starts_with(&format!("{remote}/")))
+            .max_by_key(|remote| remote.len())
+            .ok_or("Remote not found.")?;
+        let branch = &name[remote.len() + 1..];
+        let target = format!("refs/heads/{branch}");
+        git(root, &["check-ref-format", &target])?;
+        git(
+            root,
+            &[
+                "push",
+                &format!("--force-with-lease={target}:{oid}"),
+                "--delete",
+                "--",
+                remote,
+                &target,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub fn checkout(root: &Path, name: &str, kind: &str) -> Result<(), String> {
     checkout_with_stash(root, name, kind, false)
@@ -866,6 +909,47 @@ mod tests {
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
         );
+    }
+
+    #[test]
+    fn branch_deletion_protects_current_unmerged_and_changed_branches() {
+        let dir = repo();
+        let r = dir.path();
+        git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        let oid = oid.trim();
+        assert!(delete_branch(r, "main", "local", oid).is_err());
+        git(r, &["branch", "remove-me"]).unwrap();
+        assert!(delete_branch(r, "remove-me", "local", &"0".repeat(40)).is_err());
+        delete_branch(r, "remove-me", "local", oid).unwrap();
+        assert!(git(r, &["show-ref", "--verify", "refs/heads/remove-me"]).is_err());
+        git(r, &["checkout", "-b", "unmerged"]).unwrap();
+        git(r, &["commit", "--allow-empty", "-m", "Unmerged"]).unwrap();
+        let unmerged = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        git(r, &["checkout", "main"]).unwrap();
+        assert!(delete_branch(r, "unmerged", "local", unmerged.trim()).is_err());
+        let remote = tempfile::tempdir().unwrap();
+        git(remote.path(), &["init", "--bare"]).unwrap();
+        git(
+            r,
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .unwrap();
+        git(r, &["push", "origin", "main:remove-me"]).unwrap();
+        delete_branch(r, "origin/remove-me", "remote", oid).unwrap();
+        assert!(git(
+            remote.path(),
+            &["show-ref", "--verify", "refs/heads/remove-me"]
+        )
+        .is_err());
+        git(r, &["push", "origin", "main:changed"]).unwrap();
+        // Advance the server without updating this repository's tracking ref.
+        git(
+            r,
+            &["push", remote.path().to_str().unwrap(), "unmerged:changed"],
+        )
+        .unwrap();
+        assert!(delete_branch(r, "origin/changed", "remote", oid).is_err());
     }
 
     #[test]

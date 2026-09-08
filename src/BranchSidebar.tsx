@@ -1,3 +1,4 @@
+import { BranchContextMenu } from "./BranchContextMenu";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Layers, ChevronDown, GitBranch, Check } from "lucide-react";
@@ -15,6 +16,7 @@ export const BranchSidebar = memo(function BranchSidebar({
   branchFilter,
   onFilter,
   onCheckout,
+  onDelete,
   busy = false,
   activeRef,
 }: {
@@ -24,9 +26,15 @@ export const BranchSidebar = memo(function BranchSidebar({
   branchFilter: string;
   onFilter: (oid: string) => void;
   onCheckout?: (ref: Reference) => void;
+  onDelete?: (ref: Reference) => Promise<void>;
   busy?: boolean;
   activeRef?: Reference | null;
 }) {
+  const [context, setContext] = useState<{
+    ref: Reference;
+    x: number;
+    y: number;
+  } | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -158,6 +166,16 @@ export const BranchSidebar = memo(function BranchSidebar({
                   <button
                     className={`branch-row ${(activeRef ? activeRef.name === row.ref.name && activeRef.kind === row.ref.kind : branchFilter === row.ref.oid) ? "filtered" : ""}`}
                     title={`${row.ref.name}${row.ref.kind !== "tag" && onCheckout ? " — Double-click to check out" : ""}`}
+                    onContextMenu={(event) => {
+                      if (!onDelete || row.ref.kind === "tag") return;
+                      event.preventDefault();
+                      if (!busy)
+                        setContext({
+                          ref: row.ref,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                    }}
                     onClick={() => onFilter(row.ref.oid)}
                     onDoubleClick={() =>
                       !busy && row.ref.kind !== "tag" && onCheckout?.(row.ref)
@@ -175,6 +193,15 @@ export const BranchSidebar = memo(function BranchSidebar({
           })}
         </div>
       </div>
+      {context && onDelete && (
+        <BranchContextMenu
+          key={`${context.ref.kind}:${context.ref.name}`}
+          target={context}
+          checkedOut={branch}
+          onClose={() => setContext(null)}
+          onDelete={onDelete}
+        />
+      )}
     </>
   );
 });

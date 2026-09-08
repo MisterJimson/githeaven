@@ -1584,6 +1584,7 @@ export function App() {
                       >
                         {paneMode === "history" ? (
                           <BranchSidebar
+                            key={repo.root}
                             activeRef={activeRef}
                             refs={repo.refs ?? []}
                             commitCount={repo.commits?.length ?? 0}
@@ -1591,6 +1592,22 @@ export function App() {
                             branchFilter={branchFilter}
                             onFilter={filterBranch}
                             onCheckout={checkoutBranch}
+                            onDelete={async (ref) => {
+                              setBusy("Deleting branch");
+                              try {
+                                await call("delete_branch", {
+                                  root: repo.root,
+                                  name: ref.name,
+                                  kind: ref.kind,
+                                  oid: ref.oid,
+                                });
+                                setActiveRef(null);
+                                setBranchFilter("");
+                              } finally {
+                                await refresh(true);
+                                setBusy("");
+                              }
+                            }}
                             busy={!!busy}
                           />
                         ) : (

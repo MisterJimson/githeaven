@@ -75,3 +75,29 @@ it("filters and collapses branches and only checks out on double click", async (
   expect(screen.queryByRole("button", { name: "feature" })).toBeNull();
   expect(screen.getByRole("button", { name: "origin/feature" })).toBeTruthy();
 });
+
+it("opens delete as the first context action without selecting the branch", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(223);
+  const onFilter = vi.fn();
+  render(
+    <BranchSidebar
+      refs={[{ name: "feature", kind: "local", oid: "abc" }]}
+      commitCount={1}
+      branch="main"
+      branchFilter=""
+      onFilter={onFilter}
+      onDelete={vi.fn()}
+    />,
+  );
+  fireEvent.contextMenu(screen.getByRole("button", { name: "feature" }), {
+    clientX: 80,
+    clientY: 120,
+  });
+  expect(screen.getAllByRole("menuitem")[0].textContent).toContain(
+    "Delete branch",
+  );
+  expect(onFilter).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+});
