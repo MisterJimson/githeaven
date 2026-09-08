@@ -398,11 +398,13 @@ export function App() {
     )
       return;
     loadingOlder.current = true;
+    const finishPage = startSpan("history.page");
     const gen = generation.current;
     const previousLimit = limitRef.current;
     limitRef.current += 500;
     try {
       const loaded = await refresh(true);
+      finishPage(loaded && generation.current === gen ? "ok" : "error");
       if (!loaded && generation.current === gen)
         limitRef.current = previousLimit;
     } finally {

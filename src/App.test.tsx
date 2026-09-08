@@ -253,6 +253,58 @@ it("returns to folder selection after a failed restore and remembers the next su
   expect(call).toHaveBeenCalledTimes(2);
 });
 
+it("measures accepted history paging once and restores the limit after a failed request", async () => {
+  await openWorkspace({ has_more: true });
+  clearPerformanceSamples();
+  const viewport = screen.getByRole("listbox", { name: "Commit history" });
+  Object.defineProperties(viewport, {
+    clientHeight: { configurable: true, value: 600 },
+    scrollHeight: { configurable: true, value: 10000 },
+    scrollTop: { configurable: true, writable: true, value: 9000 },
+  });
+  const request = deferred<Snapshot>();
+  vi.mocked(call).mockImplementation((command) => {
+    if (command === "refresh_repository") return request.promise;
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  fireEvent.scroll(viewport);
+  fireEvent.scroll(viewport);
+  expect(call).toHaveBeenCalledWith("refresh_repository", {
+    root: "/sample",
+    limit: 1000,
+    history: true,
+  });
+  expect(
+    vi
+      .mocked(call)
+      .mock.calls.filter(([command]) => command === "refresh_repository"),
+  ).toHaveLength(1);
+  expect(
+    performanceReport().samples.some((s) => s.name === "history.page"),
+  ).toBe(false);
+  await act(async () => request.reject(new Error("History unavailable")));
+  expect(
+    performanceReport()
+      .samples.filter((s) => s.name === "history.page")
+      .map((s) => s.outcome),
+  ).toEqual(["error"]);
+  const snapshot = (await vi.mocked(call).mock.results[0].value) as Snapshot;
+  vi.mocked(call).mockResolvedValue({ ...snapshot, has_more: false });
+  fireEvent.scroll(viewport);
+  await waitFor(() =>
+    expect(
+      performanceReport()
+        .samples.filter((s) => s.name === "history.page")
+        .map((s) => s.outcome),
+    ).toEqual(["error", "ok"]),
+  );
+  expect(call).toHaveBeenLastCalledWith("refresh_repository", {
+    root: "/sample",
+    limit: 1000,
+    history: true,
+  });
+});
+
 it("measures save completion without discarding edits typed during the write", async () => {
   const editor = await openEditor();
   clearPerformanceSamples();

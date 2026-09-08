@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
 import { CommitNode } from "./CommitNode";
+import { startSpan } from "./performance";
 import { layoutGraph, GRAPH_ROW_HEIGHT, GRAPH_ROW_CENTER } from "./graph";
 import type { Commit, Reference } from "./types";
 const colors = [
@@ -65,7 +66,17 @@ export const History = memo(function History({
         : commits,
     [commits, head, hasWorkingChanges],
   );
-  const graph = useMemo(() => layoutGraph(entries), [entries]);
+  const graph = useMemo(() => {
+    const finish = startSpan("history.layout");
+    try {
+      const rows = layoutGraph(entries);
+      finish();
+      return rows;
+    } catch (error) {
+      finish("error");
+      throw error;
+    }
+  }, [entries]);
   const headIndex = entries.findIndex((commit) => commit.oid === head);
   const ghostEnd = headIndex < 0 ? entries.length : headIndex;
   const refMap = useMemo(() => {
