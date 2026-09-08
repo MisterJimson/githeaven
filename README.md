@@ -103,3 +103,22 @@ History resolves commit authors through the GitHub CLI (`gh`) using its existing
 ### Code quality
 
 Use `pnpm lint` for oxlint, `pnpm format` to apply oxfmt, and `pnpm format:check` to check formatting. `pnpm check` runs lint, formatting checks, frontend tests/build, and Rust tests. Commit `pnpm-lock.yaml`; install reproducibly with `pnpm install --frozen-lockfile`. Rust formatting remains `cargo fmt --manifest-path src-tauri/Cargo.toml`.
+
+## macOS alpha releases
+
+GitHub Actions runs `pnpm check` on pull requests and pushes to `main`. Pushing a tag such as `v0.1.0-alpha.1` runs the same checks, then builds a universal Apple Silicon + Intel macOS app and DMG and publishes a GitHub **pre-release** with both downloads and SHA-256 checksums. No Windows or Linux artifacts are built. The first build may take longer while Rust caches warm up.
+
+To cut an alpha:
+
+1. Set the same version (for example `0.1.0-alpha.2`) in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the `githeaven` package entry in `src-tauri/Cargo.lock`.
+2. Update `.github/alpha-release-notes.md` as needed, run `pnpm check`, and commit/push to `main`.
+3. Tag that commit and push the tag:
+
+   ```sh
+   git tag -a v0.1.0-alpha.2 -m 'Githeaven 0.1.0-alpha.2'
+   git push origin v0.1.0-alpha.2
+   ```
+
+CI rejects tags that do not match the package versions. A release is published only after checks, the universal build, architecture verification, and code-signature verification succeed. A failed run can be rerun from Actions; if a release already exists, publishing refuses to overwrite it. Use a new version/tag for changed binaries. Manually running the workflow on `main` validates only; it does not release.
+
+These initial alphas use ad-hoc signing (`APPLE_SIGNING_IDENTITY=-`) and are not notarized. They require no Apple secrets, but macOS may require **Privacy & Security → Open Anyway** on first launch. Developer ID signing and notarization must be configured before claiming an Apple-verified distribution. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/). Release permissions use the workflow's built-in GitHub token; no personal token is needed. Auto-update support is not included.
