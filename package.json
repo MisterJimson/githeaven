@@ -15,7 +15,8 @@
     "lint": "oxlint --deny-warnings src scripts vite.config.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "perf:graph": "node scripts/benchmark-graph.mjs"
+    "perf:graph": "node scripts/benchmark-graph.mjs",
+    "perf:backend": "cargo run --release --manifest-path src-tauri/Cargo.toml --example performance --"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

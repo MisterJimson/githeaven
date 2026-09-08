@@ -57,3 +57,28 @@ This performance effort is ongoing. The following areas still require baseline t
 | Regression gates                      | Repeatable native scenarios and stable thresholds, not timing assertions in jsdom              |
 
 Keep raw local traces outside Git unless reviewed for inclusion. Document environment and sample sizes with every performance claim. Browser and Node benchmarks do not prove native WebKit latency.
+
+## Native repository benchmark
+
+```sh
+pnpm perf:backend /path/to/repository > /tmp/githeaven-backend.csv
+```
+
+This release-mode Rust example directly calls the production repository code, without launching or modifying the desktop session. It performs read-only snapshots at 500/2,000/6,000 commits, individual status/file/ref/HEAD queries, snapshot serialization, commit details, and small working-file/diff-input reads. It never stages, commits, checks out, fetches, or writes repository files. Git runs with optional index locks disabled, as in the app. Use a repository with at least one commit. Errors abort the run with a nonzero exit code.
+
+CSV rows contain operation, iteration, milliseconds, and output units. Output units are file counts for snapshots/commit details and byte lengths for other operations; they contain no paths or source text. Iteration 0 is the first call for that operation, followed by fifteen warm samples. The operating-system cache is not flushed. Environment/build mode goes to stderr. The calls isolate backend cost and exclude Tauri IPC, watcher delivery, UI scheduling, and rendering. Run without another build/benchmark for comparable results.
+
+### Overlap independent snapshot reads
+
+The original snapshot performed refs and history reads only after status/file discovery finished. The revised implementation starts refs and history as soon as the HEAD probe completes, overlapping them with the still-running status and file-list reads. Every refresh still reads live Git data, with unchanged parsing, limits, and error propagation; no result cache was introduced.
+
+Primary `terminal` repository, release Rust, macOS arm64, fifteen warm samples per operation:
+
+| Operation               | Before median ms | After median ms |
+| ----------------------- | ---------------- | --------------- |
+| Working snapshot        | 79.99            | 80.68           |
+| Snapshot, 500 commits   | 130.69           | 85.52           |
+| Snapshot, 2,000 commits | 144.45           | 88.91           |
+| Snapshot, 6,000 commits | 186.14           | 124.64          |
+
+Standalone status was about 69ms, file discovery 61–63ms, and serialization 0.5ms. Thus this change improves full snapshots by roughly a third but does not improve the working-only refresh bottleneck. File reads were about 0.01ms, while diff-version inputs took 47–49ms: inspecting the implementation shows three sequential Git subprocesses per blob read. Reducing that overhead while preserving missing-file/error handling and the pre-read size cap is a next investigation target.

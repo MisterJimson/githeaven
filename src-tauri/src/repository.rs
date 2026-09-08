@@ -135,7 +135,7 @@ pub fn parse_status(bytes: Vec<u8>) -> Result<Vec<Change>, String> {
 }
 pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, String> {
     let start = Instant::now();
-    let (status, paths, head, branch) = std::thread::scope(|s| {
+    let (status, paths, head, branch, raw_refs, raw_log) = std::thread::scope(|s| {
         let status = s.spawn(|| {
             git(
                 root,
@@ -165,11 +165,47 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                 .trim()
                 .to_string()
         });
+        let head = head.join().map_err(|_| "HEAD worker failed")?;
+        let refs = history.then(|| {
+            s.spawn(|| {
+                git_text(
+                    root,
+                    &[
+                        "for-each-ref",
+                        "--format=%(refname)%09%(objectname)",
+                        "refs/heads",
+                        "refs/remotes",
+                        "refs/tags",
+                    ],
+                )
+            })
+        });
+        let has_head = head.is_some();
+        let log = history.then(|| s.spawn(move || {
+        let count = limit.saturating_add(1).to_string();
+        let mut args = vec![
+            "log",
+            "--all",
+            "--topo-order",
+            "-z",
+            "--format=%H%x00%P%x00%an%x00%at%x00%s%x00%ae%x00%(trailers:key=Co-authored-by,valueonly,separator=%x1f)",
+            "-n",
+            &count,
+        ];
+        if has_head {
+            args.push("HEAD");
+        }
+        git_text(root, &args)
+        }));
         Ok::<_, String>((
             status.join().map_err(|_| "Status worker failed")??,
             paths.join().map_err(|_| "File-list worker failed")??,
-            head.join().map_err(|_| "HEAD worker failed")?,
+            head,
             branch.join().map_err(|_| "Branch worker failed")?,
+            refs.map(|worker| worker.join().map_err(|_| "Refs worker failed")?)
+                .transpose()?,
+            log.map(|worker| worker.join().map_err(|_| "History worker failed")?)
+                .transpose()?,
         ))
     })?;
     let changes = parse_status(status)?;
@@ -182,18 +218,11 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
     let mut refs = None;
     let mut has_more = false;
     if history {
-        let raw = git_text(
-            root,
-            &[
-                "for-each-ref",
-                "--format=%(refname)%09%(objectname)",
-                "refs/heads",
-                "refs/remotes",
-                "refs/tags",
-            ],
-        )?;
         refs = Some(
-            raw.lines()
+            raw_refs
+                .as_deref()
+                .unwrap_or_default()
+                .lines()
                 .filter_map(|s| {
                     let (name, oid) = s.split_once('\t')?;
                     let (kind, name) = if let Some(s) = name.strip_prefix("refs/heads/") {
@@ -212,21 +241,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                 .collect(),
         );
         let mut list = vec![];
-        let count = limit.saturating_add(1).to_string();
-        let mut args = vec![
-            "log",
-            "--all",
-            "--topo-order",
-            "-z",
-            "--format=%H%x00%P%x00%an%x00%at%x00%s%x00%ae%x00%(trailers:key=Co-authored-by,valueonly,separator=%x1f)",
-            "-n",
-            &count,
-        ];
-        if head.is_some() {
-            args.push("HEAD");
-        }
-        let raw = git_text(root, &args)?;
-        let fields: Vec<_> = raw.split('\0').collect();
+        let fields: Vec<_> = raw_log.as_deref().unwrap_or_default().split('\0').collect();
         for f in fields.chunks(7) {
             if f.len() < 7 || f[0].is_empty() {
                 continue;
@@ -599,6 +614,31 @@ mod tests {
         git(dir.path(), &["config", "user.name", "Test"]).unwrap();
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
+    }
+    #[test]
+    fn snapshot_includes_detached_history_and_honors_working_only_reads() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("a.txt"), "base\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        git(r, &["checkout", "--detach"]).unwrap();
+        fs::write(r.join("a.txt"), "detached\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Detached"]).unwrap();
+        let full = snapshot(r, 1, true).unwrap();
+        assert_eq!(full.branch, "Detached HEAD");
+        assert_eq!(full.commits.as_ref().unwrap()[0].subject, "Detached");
+        assert_eq!(
+            full.commits.as_ref().unwrap()[0].oid,
+            full.head.as_ref().unwrap().as_str()
+        );
+        assert!(full.has_more);
+        let working = snapshot(r, 1, false).unwrap();
+        assert!(working.commits.is_none());
+        assert!(working.refs.is_none());
+        assert_eq!(working.files, full.files);
+        assert_eq!(working.head, full.head);
     }
     #[test]
     fn history_preserves_author_email_and_coauthors() {
