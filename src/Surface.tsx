@@ -30,7 +30,11 @@ import {
 } from "@pierre/diffs";
 import HighlightWorker from "@pierre/diffs/worker/worker.js?worker";
 import { FileCode2, LoaderCircle } from "lucide-react";
-import { DiffCache, DiffPreparationSuperseded } from "./DiffCache";
+import {
+  DiffCache,
+  DiffPreparationSuperseded,
+  type PreparedDiff,
+} from "./DiffCache";
 import { nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
@@ -336,39 +340,62 @@ function LiveDiff({
   const measured = useRef(0);
   const { path, source, oid, parent, oldPath } = selection;
 
+  const latestRefresh = useRef(refresh);
+  latestRefresh.current = refresh;
+  const requestRefresh = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (deferRefresh) return;
     let active = true;
-    setError("");
-    const finish = startForegroundTiming("ui.diff-ready");
-    void cache
-      .prepare(root, selection, refresh)
-      .then((prepared) => {
-        if (!active) return;
-        const data = prepared.versions;
-        if (
-          loadedComparison.current === comparison &&
-          loaded.current?.old === data.old &&
-          loaded.current?.new === data.new
-        )
-          return;
-        const version = ++revision.current;
-        loaded.current = data;
-        loadedComparison.current = comparison;
-        started.current = { version, finish };
-        setItem({
-          id: comparison,
-          version,
-          type: "diff",
-          fileDiff: prepared.diff,
-        });
-      })
-      .catch((error) => {
-        if (active && !(error instanceof DiffPreparationSuperseded))
-          setError(errorText(error));
+    let running = false;
+    let completed: number | undefined;
+    const publish = (prepared: PreparedDiff, finish: () => number | null) => {
+      const data = prepared.versions;
+      if (
+        loadedComparison.current === comparison &&
+        loaded.current?.old === data.old &&
+        loaded.current?.new === data.new
+      )
+        return;
+      const version = ++revision.current;
+      loaded.current = data;
+      loadedComparison.current = comparison;
+      started.current = { version, finish };
+      setItem({
+        id: comparison,
+        version,
+        type: "diff",
+        fileDiff: prepared.diff,
       });
+    };
+    const run = async () => {
+      if (running || !active || completed === latestRefresh.current) return;
+      running = true;
+      try {
+        while (active && completed !== latestRefresh.current) {
+          const requested = latestRefresh.current;
+          setError("");
+          const finish = startForegroundTiming("ui.diff-ready");
+          try {
+            const prepared = await cache.prepare(root, selection, requested);
+            if (!active) return;
+            publish(prepared, finish);
+          } catch (error) {
+            if (active && !(error instanceof DiffPreparationSuperseded))
+              setError(errorText(error));
+          }
+          completed = requested;
+        }
+      } finally {
+        running = false;
+      }
+    };
+    requestRefresh.current = () => {
+      void run();
+    };
+    void run();
     return () => {
       active = false;
+      requestRefresh.current = null;
     };
   }, [
     cache,
@@ -378,10 +405,12 @@ function LiveDiff({
     oid,
     parent,
     oldPath,
-    refresh,
     comparison,
     deferRefresh,
   ]);
+  useEffect(() => {
+    requestRefresh.current?.();
+  }, [refresh]);
 
   useLayoutEffect(() => {
     // Reset only when the prepared replacement is installed, never while waiting

@@ -19,6 +19,33 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 const selection = { path: "file.ts", source: "worktree" as const };
+it("does not let a newer speculative refresh supersede visible highlighting", async () => {
+  let release!: () => void;
+  const pool = {
+    primeDiffHighlightCache: vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  const visible = cache.prepare("repo", selection, 1);
+  await vi.waitFor(() =>
+    expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1),
+  );
+  const speculative = cache.prepare("repo", selection, 2, false);
+  expect(call).toHaveBeenCalledTimes(1);
+  release();
+  expect(await speculative).toBe(await visible);
+  expect(cache.peek("repo", selection)?.refresh).toBe(1);
+  await cache.prepare("repo", selection, 2);
+  expect(call).toHaveBeenCalledTimes(2);
+  expect(cache.peek("repo", selection)?.refresh).toBe(2);
+});
 it("deduplicates preparation and returns a synchronously ready diff on revisit", async () => {
   const pool = {
     primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),

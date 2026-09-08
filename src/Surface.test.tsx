@@ -206,14 +206,14 @@ it("retains the last diff on transient read errors and recovers in place", async
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("rejects superseded parses and resets only when navigating to another comparison", async () => {
+it("coalesces same-file refreshes and resets only when navigating to another comparison", async () => {
   vi.mocked(call).mockResolvedValueOnce(versions("old"));
   const { rerender } = render(<DiffSurface {...props} refresh={0} />);
   await waitFor(() => expect(DiffWorker.instances).toHaveLength(1));
   vi.mocked(call).mockResolvedValueOnce(versions("latest"));
   rerender(<DiffSurface {...props} refresh={1} />);
+  await finishWorker(0, "old");
   await finishWorker(1, "latest");
-  act(() => DiffWorker.instances[0].deliver("stale"));
   expect(screen.getByTestId("viewer").textContent).toBe("latest");
   vi.mocked(call).mockResolvedValueOnce(versions("other"));
   rerender(
@@ -231,6 +231,24 @@ it("rejects superseded parses and resets only when navigating to another compari
   await finishWorker(2, "other");
   expect(screen.getByTestId("viewer")).toBe(previous);
   expect(scrollTo.mock.calls.length).toBe(resets + 1);
+  expect(screen.getByTestId("viewer").textContent).toBe("other");
+});
+
+it("starts another file immediately and ignores the previous file's later completion", async () => {
+  vi.mocked(call).mockResolvedValueOnce(versions("old"));
+  const { rerender } = render(<DiffSurface {...props} refresh={0} />);
+  await waitFor(() => expect(DiffWorker.instances).toHaveLength(1));
+  vi.mocked(call).mockResolvedValueOnce(versions("other"));
+  rerender(
+    <DiffSurface
+      {...props}
+      selection={{ ...props.selection, path: "other.ts" }}
+      refresh={0}
+    />,
+  );
+  await finishWorker(1, "other");
+  expect(screen.getByTestId("viewer").textContent).toBe("other");
+  await finishWorker(0, "old");
   expect(screen.getByTestId("viewer").textContent).toBe("other");
 });
 
@@ -448,6 +466,39 @@ it("publishes a diff only after its syntax cache is ready, retaining the previou
     ([diff]) => diff.cacheKey,
   );
   expect(new Set(keys).size).toBe(2);
+});
+
+it("finishes live highlighting before reading only the newest queued refresh", async () => {
+  vi.mocked(call).mockResolvedValue(versions("first"));
+  const { rerender } = render(<DiffSurface {...props} refresh={0} />);
+  await finishWorker(0, "first");
+  const viewer = screen.getByTestId("viewer");
+  let release = () => {};
+  highlightPool.primeDiffHighlightCache.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  vi.mocked(call).mockResolvedValue(versions("middle"));
+  rerender(<DiffSurface {...props} refresh={1} />);
+  await waitFor(() => expect(DiffWorker.instances.length).toBe(2));
+  act(() => DiffWorker.instances[1].deliver("middle"));
+  await waitFor(() =>
+    expect(highlightPool.primeDiffHighlightCache).toHaveBeenCalledTimes(2),
+  );
+  vi.mocked(call).mockResolvedValue(versions("latest"));
+  for (let refresh = 2; refresh <= 20; refresh++)
+    rerender(<DiffSurface {...props} refresh={refresh} />);
+  expect(call).toHaveBeenCalledTimes(2);
+  expect(viewer.textContent).toBe("first");
+  await act(async () => release());
+  expect(viewer.textContent).toBe("middle");
+  await waitFor(() => expect(DiffWorker.instances.length).toBe(3));
+  expect(call).toHaveBeenCalledTimes(3);
+  await finishWorker(2, "latest");
+  expect(screen.getByTestId("viewer")).toBe(viewer);
+  expect(viewer.textContent).toBe("latest");
 });
 
 it("switches to a different file even when its contents match the previous file", async () => {

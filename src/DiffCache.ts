@@ -126,6 +126,12 @@ export class DiffCache {
       return ready;
     }
     const pending = this.pending.get(key);
+    if (!foreground && pending?.foreground && pending.refresh !== refresh) {
+      // Background refreshes must not invalidate the visible file while its
+      // highlight is completing. Its foreground owner requests the newest data.
+      countEvent("diff.prepare.foreground-protected");
+      return pending.result;
+    }
     if (pending?.refresh === refresh) {
       countEvent("diff.prepare.shared-request");
       if (foreground) pending.foreground = true;
