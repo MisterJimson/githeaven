@@ -43,6 +43,7 @@ import type { FileSession } from "./Surface";
 import { reachable } from "./graph";
 import { projectStaging, type StagingOperation } from "./staging";
 import { startRuntimeCapture } from "./runtimeCapture";
+import { StartupReady } from "./startup";
 import {
   clearPerformanceSamples,
   downloadPerformanceReport,
@@ -1434,6 +1435,7 @@ export function App() {
                     : diffPreviews
                 }
               >
+                <StartupReady phase="repository" />
                 {(["history", "files"] as const).map((paneMode) => {
                   const active = mode === paneMode;
                   return (
@@ -2094,6 +2096,7 @@ export function App() {
         </div>
       ) : (
         <div className="welcome">
+          <StartupReady phase="welcome" />
           <div className="welcome-copy">
             <span className="eyebrow">YOUR CODE. A CLEARER VIEW.</span>
             <h1>

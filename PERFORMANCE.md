@@ -457,3 +457,26 @@ The largest yielding task gap at 30,000 lines was 48.03ms. Total elapsed time re
 Native verification on the 30,000-line fixture recorded an uninterrupted preparation of **861ms**, an end jump reaching its destination in **934ms**, and a **23ms** input-to-paint-opportunity sample for that command. No recorded frame gap over 50ms intersected that preparation interval. Subsequent cached start/end jumps were 79/54ms. During a separate pending cold jump, typing `x` after approximately 151ms cancelled the jump and inserted at the original first-line cursor; the typing sample was 27ms and undo restored saved contents. The trace recorded two cancelled navigation requests, including an immediately superseded start command.
 
 The full capture also contains seventeen frame gaps above 50ms, up to 304ms, outside the uninterrupted preparation interval, including edit/undo, file switching and accessibility-observation periods. This change does not establish that the editor is stall-free overall. All fixture disk hashes remain unchanged, capture is off, and the primary workspace was restored. Local artifacts: `/tmp/githeaven-navigation-sync.json`, `/tmp/githeaven-navigation-yield.json`, and `githeaven-yield-native.json` in the system temporary directory.
+
+## Native startup milestones
+
+Release trace exports now include `gauges.startup`, with fixed numeric `native_entry_to_*_ms` values. A Rust monotonic clock starts at the beginning of `main`; milestones record native setup, receipt of the frontend initialization signal, repository discovery, snapshot completion, watcher setup, and receipt of the rendered repository or welcome signal. Each milestone is retained once per process. The first repository/welcome outcome wins, so opening a folder long after the welcome screen or switching repositories does not overwrite startup.
+
+The rendered signal is emitted after the actual workspace Suspense boundary mounts and two animation-frame opportunities occur. Measuring only repository state would finish before the lazy workspace bundle renders. `ready_in_foreground` records the page's focus/visibility state at that checkpoint. The elapsed native values remain separate from frontend span timestamps; subtracting clocks with different origins would create invalid trace spans. They intentionally survive Reset samples as process-lifetime metadata. No paths, repo identities, source text or network telemetry are added.
+
+To collect a baseline, build the release app, quit it, launch it with the desired saved project state, and export the trace after the workspace appears. Repeat as separate processes under the same workload and report focus state. Operating-system caches are not flushed. The native clock excludes executable loading before `main`, and receipt of a frontend milestone includes outgoing IPC scheduling. Two frame opportunities do not prove physical presentation or all controls' readiness; this instrumentation is a startup-stage baseline, not a complete launch-to-interactive gate.
+
+A macOS arm64 release restart with the primary repository and two saved project tabs recorded:
+
+| Milestone                               | Milliseconds since native entry |
+| --------------------------------------- | ------------------------------: |
+| Native setup                            |                          239.08 |
+| Frontend initialization received        |                          452.49 |
+| Repository discovered                   |                          481.16 |
+| Snapshot complete                       |                          590.14 |
+| Watcher setup complete                  |                          622.83 |
+| Rendered repository checkpoint received |                          810.92 |
+
+The frontend's `open_repository` invocation was 163ms. The page reported `ready_in_foreground: false`, so this run is **not** a verified foreground launch-to-interactive sample. It is one fresh-process observation with warm OS caches and a live primary repository (79 working changes); no percentile or improvement claim is warranted. Stage attribution suggests further investigation of work before frontend initialization and between native repository completion and the rendered checkpoint. Foreground window activation, repeated controlled launch distributions and per-stage optimization remain outstanding. Raw local artifact: `githeaven-startup-1.json` in the system temporary directory.
+
+A Rust test verifies monotonic capture, immutable first milestones, the first-ready outcome rule and numeric serialization. A frontend test verifies that an unmounted/unfinished rendering probe cannot signal readiness, two frames are required, and duplicate or alternate later outcomes are ignored. Full validation and a native release build pass.

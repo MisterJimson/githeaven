@@ -2,16 +2,18 @@
 
 mod avatars;
 mod repository;
+mod startup;
 use notify::{RecursiveMode, Watcher};
 use repository::*;
 use serde::Serialize;
+use startup::{startup_milestone, Milestone, Startup};
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 #[derive(Default)]
 struct Session {
@@ -104,16 +106,20 @@ async fn open_repository(
     path: String,
     app: tauri::AppHandle,
     state: State<'_, Session>,
+    startup: State<'_, Startup>,
 ) -> Result<Snapshot, String> {
     let root = tauri::async_runtime::spawn_blocking(move || discover(&path))
         .await
         .map_err(|e| e.to_string())??;
+    let _ = startup.record(Milestone::RepositoryDiscovery);
     let snapshot_root = root.clone();
     let mut snap =
         tauri::async_runtime::spawn_blocking(move || snapshot(&snapshot_root, 500, true))
             .await
             .map_err(|e| e.to_string())??;
+    let _ = startup.record(Milestone::RepositorySnapshot);
     let watcher = watch(app, root.clone());
+    let _ = startup.record(Milestone::RepositoryWatch);
     snap.watch_warning = watcher.as_ref().err().cloned();
     state
         .repositories
@@ -336,11 +342,18 @@ async fn export_performance_report(app: tauri::AppHandle, report: String) -> Res
 }
 
 fn main() {
+    let startup = Startup::new();
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Session::default())
+        .manage(startup)
+        .setup(|app| {
+            let _ = app.state::<Startup>().record(Milestone::Setup);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            startup_milestone,
             export_performance_report,
             open_repository,
             close_repository,
