@@ -11,7 +11,8 @@ afterEach(() => {
 function setup() {
   const callbacks = new Map<number, FrameRequestCallback>();
   let id = 0;
-  let time = performance.now();
+  // Use whole milliseconds so exact timeout boundaries do not depend on rounding.
+  let time = Math.ceil(performance.now());
   vi.spyOn(performance, "now").mockImplementation(() => time);
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
