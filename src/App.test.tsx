@@ -1652,3 +1652,35 @@ it("only offers the inspector working changes shortcut when changes exist", asyn
   refreshWorkspace();
   await waitFor(() => expect(shortcut()).toBeNull());
 });
+
+it("keeps one inspector avatar when arrowing repeatedly between commits", async () => {
+  const commits = Array.from({ length: 8 }, (_, i) => ({
+    oid: String(i).repeat(40),
+    parents: i < 7 ? [String(i + 1).repeat(40)] : [],
+    author: `Author ${i}`,
+    subject: `Subject ${i}`,
+    timestamp: 1,
+  }));
+  await openWorkspace({ commits });
+  const graph = screen.getByRole("listbox", { name: "Commit history" });
+  for (const key of [
+    ...Array(8).fill("ArrowDown"),
+    ...Array(7).fill("ArrowUp"),
+    ...Array(7).fill("ArrowDown"),
+  ]) {
+    fireEvent.keyDown(graph, { key });
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(".commit-identity-row .commit-avatar"),
+      ).toHaveLength(1),
+    );
+    expect(
+      document.querySelectorAll(".commit-identity-row .commit-pr-actions"),
+    ).toHaveLength(1);
+  }
+  expect(
+    document
+      .querySelector(".commit-identity-row .commit-avatar")
+      ?.getAttribute("aria-label"),
+  ).toContain("Author 7");
+});

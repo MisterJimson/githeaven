@@ -2113,12 +2113,12 @@ export function App() {
                                 <div className="commit-details">
                                   <div className="commit-identity-row">
                                     <CommitAvatar
-                                      key={`${repo.root}:${selected.oid}`}
+                                      key={`avatar:${repo.root}:${selected.oid}`}
                                       root={repo.root}
                                       commit={selected}
                                     />
                                     <CommitPullRequests
-                                      key={`${repo.root}:${selected.oid}`}
+                                      key={`pr:${repo.root}:${selected.oid}`}
                                       root={repo.root}
                                       oid={selected.oid}
                                       active={
