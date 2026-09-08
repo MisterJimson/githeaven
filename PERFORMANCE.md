@@ -341,3 +341,23 @@ Native repeat capture on the same unchanged editor fixture recorded **twelve rep
 A separate capture alternated Git and Edit ten times each with accessibility observation after each click. The twenty tab-switch samples measured **31ms median / 33ms p95 / 33ms maximum**; the first return to Git was 25ms. Prefetch resumed while Git was visible, recording 29 cache hits, three misses, two large-prefetch skips and 18 previously-deferred hits across the sequence. Existing mounted content and caches were retained. This is a current-build responsiveness result, not a before/after tab-speed improvement claim. It does not include immediate selection of an uncached large comparison.
 
 Both captures were stopped and exported (`githeaven-hidden-git-refresh.json` and `githeaven-hidden-git-tabs.json` in the system temporary directory). The fixture tab was closed without edits and the primary repository restored.
+
+## Editor opening CPU stages
+
+```sh
+pnpm perf:editor-open /tmp/editor-open.json
+```
+
+This benchmark uses Pierre's public `TextDocument`, `getSharedHighlighter`, and `renderFileWithHighlighter` APIs against the editor fixture's same three source shapes. It measures document construction plus line-count/end-position access, Shiki tokenization, and the full syntax-tree render used for editable files (`useTokenTransformer: true`). Each stage records a first call, three warmups, 20 measured calls and an output hash. Hash generation is outside the timed section. Highlighter initialization is recorded separately (31.44ms in this run). Node/platform/architecture accompany the results.
+
+Same-machine CPU medians:
+
+|  Lines | Document preparation | Tokenization | Full editor syntax tree |
+| -----: | -------------------: | -----------: | ----------------------: |
+|  1,000 |               0.03ms |      31.33ms |                 36.39ms |
+| 10,000 |               0.11ms |     358.94ms |                389.25ms |
+| 30,000 |               0.40ms |   1,028.42ms |              1,095.60ms |
+
+The syntax-tree stage includes tokenization; do not add those columns. Allocation/GC and warmup variation mean the difference between separately measured stages is not an exact estimate of tree-construction overhead. At 30,000 lines their p95 values were 0.47ms, 1,485.42ms and 1,180.31ms respectively. These measurements exclude React, DOM construction, worker IPC, viewport painting, and editor attachment. They identify a candidate CPU bottleneck, not an attribution of all 899ms in the earlier native opening sample.
+
+Inspection of the installed Pierre 1.4.0 implementation shows its colored `renderFileWithHighlighter` path resets the requested range to the whole file. `FileRenderer` obtains that full result before projecting visible rows, and the editor also has its own viewport/incremental tokenizer. Document indexing is therefore not the current optimization target. Avoiding the initial full-file colored render merits a native experiment, but any approach must preserve syntax highlighting at first presentation, editing, undo, scrolling and language-state continuity. No production renderer behavior was changed in this measurement pass. Raw local artifact: `/tmp/githeaven-editor-open-stages.json`.
