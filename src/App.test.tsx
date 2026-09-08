@@ -12,7 +12,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { App } from "./App";
 import { call } from "./api";
-import { countEvent, performanceReport, startSpan } from "./performance";
+import {
+  clearPerformanceSamples,
+  countEvent,
+  performanceReport,
+  startSpan,
+} from "./performance";
 import type { Snapshot, Selection } from "./types";
 
 const diffLoads = vi.hoisted(() => vi.fn());
@@ -548,6 +553,7 @@ const modifiedChange = {
 };
 
 it("stages optimistically, queues an immediate reversal, and waits for Git before enabling commit", async () => {
+  clearPerformanceSamples();
   await openWorkspace({
     changes: [modifiedChange],
     refs: [{ name: "topic", oid: "abc", kind: "local" }],
@@ -596,8 +602,21 @@ it("stages optimistically, queues an immediate reversal, and waits for Git befor
       .disabled,
   ).toBe(false);
   expect(writes).toBe(1);
+  expect(
+    performanceReport().samples.some(
+      (s) => s.name === "git.unstage.file.queue",
+    ),
+  ).toBe(false);
   await act(async () => first.resolve(undefined));
   expect(writes).toBe(1);
+  expect(
+    performanceReport().samples.some(
+      (s) => s.name === "git.stage.file.write" && s.outcome === "ok",
+    ),
+  ).toBe(true);
+  expect(
+    performanceReport().samples.some((s) => s.name === "git.stage.file.total"),
+  ).toBe(false);
   await act(async () =>
     status.resolve({
       ...snapshot,
@@ -607,6 +626,13 @@ it("stages optimistically, queues an immediate reversal, and waits for Git befor
   expect(writes).toBe(2);
   expect(screen.getByRole("button", { name: "Staged Files (0)" })).toBeTruthy();
   await act(async () => second.resolve(undefined));
+  for (const action of ["stage", "unstage"])
+    for (const phase of ["queue", "write", "reconcile", "total"])
+      expect(
+        performanceReport()
+          .samples.filter((s) => s.name === `git.${action}.file.${phase}`)
+          .map((s) => s.outcome),
+      ).toEqual(["ok"]);
   expect(screen.getByRole("button", { name: "Stage file" })).toBeTruthy();
   expect(
     (
@@ -618,6 +644,7 @@ it("stages optimistically, queues an immediate reversal, and waits for Git befor
 });
 
 it("rolls back a failed bulk stage while preserving a newer diff selection and commit text", async () => {
+  clearPerformanceSamples();
   await openWorkspace({
     changes: [modifiedChange, { ...modifiedChange, path: "other.txt" }],
   });
@@ -636,6 +663,16 @@ it("rolls back a failed bulk stage while preserving a newer diff selection and c
   expect(screen.getByRole("button", { name: "Staged Files (2)" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "other.txt" }));
   await act(async () => write.reject(new Error("index.lock exists")));
+  for (const [phase, outcome] of [
+    ["write", "error"],
+    ["reconcile", "ok"],
+    ["total", "error"],
+  ])
+    expect(
+      performanceReport().samples.find(
+        (s) => s.name === `git.stage.all.${phase}`,
+      )?.outcome,
+    ).toBe(outcome);
   expect(
     await screen.findByText(
       /Could not stage changes: Error: index.lock exists/,
@@ -656,6 +693,7 @@ it("rolls back a failed bulk stage while preserving a newer diff selection and c
 });
 
 it("does not falsely roll back a successful stage when only the refresh fails", async () => {
+  clearPerformanceSamples();
   await openWorkspace({ changes: [modifiedChange] });
   vi.mocked(call).mockImplementation(async (command) => {
     if (command === "stage_all_changes") return;
@@ -663,6 +701,16 @@ it("does not falsely roll back a successful stage when only the refresh fails", 
   });
   fireEvent.click(screen.getByRole("button", { name: "Stage all changes" }));
   await screen.findByText(/Changes staged, but refresh failed/);
+  for (const [phase, outcome] of [
+    ["write", "ok"],
+    ["reconcile", "error"],
+    ["total", "error"],
+  ])
+    expect(
+      performanceReport().samples.find(
+        (s) => s.name === `git.stage.all.${phase}`,
+      )?.outcome,
+    ).toBe(outcome);
   expect(screen.getByRole("button", { name: "Staged Files (1)" })).toBeTruthy();
   expect(
     screen.getByRole("button", { name: "Unstaged Files (0)" }),

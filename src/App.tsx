@@ -86,6 +86,9 @@ const layerStyle = (visible: boolean) => ({
 
 interface QueuedStage extends StagingOperation {
   root: string;
+  metric: string;
+  finishQueue: ReturnType<typeof startSpan>;
+  finishTotal: ReturnType<typeof startSpan>;
   beforeSelection?: Selection;
   selectionRevision?: number;
 }
@@ -991,7 +994,10 @@ export function App() {
     try {
       while (stageQueue.current.length) {
         const operation = stageQueue.current[0];
+        operation.finishQueue();
+        const finishWrite = startSpan(`${operation.metric}.write`);
         let applied = false;
+        let reconciled = false;
         try {
           await call(
             operation.path === undefined ? "stage_all_changes" : "stage_file",
@@ -1002,7 +1008,9 @@ export function App() {
             },
           );
           applied = true;
+          finishWrite();
         } catch (error) {
+          finishWrite("error");
           // Remove only this failed projection; preserve later queued intentions.
           stageQueue.current = stageQueue.current.filter(
             (item) => item !== operation,
@@ -1021,6 +1029,7 @@ export function App() {
           );
         }
         // Reconcile even after failure, since another process may have changed Git.
+        const finishReconcile = startSpan(`${operation.metric}.reconcile`);
         try {
           const next = await call<Snapshot>("refresh_repository", {
             root: operation.root,
@@ -1032,7 +1041,10 @@ export function App() {
               ? mergeSnapshot(previous, next, false)
               : previous,
           );
+          reconciled = true;
+          finishReconcile();
         } catch (error) {
+          finishReconcile("error");
           if (applied) {
             // A refresh failure cannot undo a successful Git write.
             setRepo((previous) =>
@@ -1054,6 +1066,7 @@ export function App() {
         setStageOperations([...stageQueue.current]);
         stageRevision.current++;
         setTick((value) => value + 1);
+        operation.finishTotal(applied && reconciled ? "ok" : "error");
       }
     } finally {
       stageRunning.current = false;
@@ -1070,7 +1083,14 @@ export function App() {
   function enqueueStage(operation: StagingOperation) {
     const current = repoRef.current;
     if (!current || busy || dirtyRef.current) return;
-    const queued: QueuedStage = { ...operation, root: current.root };
+    const metric = `git.${operation.unstage ? "unstage" : "stage"}.${operation.path === undefined ? "all" : "file"}`;
+    const queued: QueuedStage = {
+      ...operation,
+      root: current.root,
+      metric,
+      finishQueue: startSpan(`${metric}.queue`),
+      finishTotal: startSpan(`${metric}.total`),
+    };
     const viewed = changeSelectionRef.current;
     if (
       viewed &&
