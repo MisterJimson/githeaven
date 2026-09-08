@@ -294,3 +294,28 @@ A controlled slow-worker test held the first result while 20 edits arrived 150ms
 The editor now permits one calculation in flight and stores only the latest pending revision on the page. Once the current job completes, it dispatches that revision if its debounce has elapsed. A newer keystroke clears pending readiness until its own debounce expires. Existing markers remain visible while calculations run, and stale results never replace them. File changes/unmount terminate the worker and discard pending state; late callbacks from a previous worker are ignored. Already running calculations are not interrupted.
 
 The same controlled test now sends **two jobs instead of 21** and records **19 coalesced revisions**. `editor.changes-dispatched` counts posted jobs and `editor.changes-coalesced` counts replacements of debounce-ready pending revisions; keystrokes absorbed before the debounce fires are not counted. Tests additionally cover worker completion during a new debounce, file changes, unmount, and stale callbacks. This establishes avoided queued work, not a native typing-latency result. The current calculation can still delay the newest result by its own remaining runtime; incremental diff calculation and native burst traces remain follow-up work.
+
+## Native editor fixture and capture
+
+```sh
+pnpm perf:fixture --editor
+```
+
+This creates a new disposable repository with three TypeScript files containing 1,000, 10,000 and 30,000 lines. Every twentieth line differs from the committed baseline. It retains the fixture manifest's before/after hashes and leaves the original default diff-navigation profile unchanged. The editor profile is deliberately incompatible with `perf:pulse`; that driver rejects its different fixture contents.
+
+A release-native run on this Mac opened file-01 and file-02 in Edit, typed a short comment followed by 20 keys in the 10,000-line file, discarded it, then entered 20 individually observed keys and a rapid 20-key burst in the 30,000-line file. Accessibility observation paced the individually observed keys about 1.1 seconds apart; the rapid burst omitted those observations. This is an automated workload, not a recording of a human typing session. Capture included palette navigation and file opening as well as typing.
+
+Results from the trace (no discarded samples):
+
+| Measurement                                             | Samples | Median |   p95 | Maximum |
+| ------------------------------------------------------- | ------: | -----: | ----: | ------: |
+| Worker calculations before opening the 30,000-line file |       4 | 85.5ms |     — |    90ms |
+| Worker calculations after opening the 30,000-line file  |      24 |  800ms | 852ms |   862ms |
+| Key-to-two-frame proxy after that file opened           |      50 |   28ms |  33ms |    34ms |
+| Gutter decoration across the capture                    |     109 |    0ms |   0ms |     1ms |
+
+The two file-open measurements were 352ms and 899ms. The **aggregate** key p95 was 377ms, but its largest samples began during the first palette-driven file open. It must not be described as steady-state editor typing latency. The stage split above uses the second file-open start as its boundary, not individual editor-event labels; dedicated editor input attribution would be stronger evidence. Sub-millisecond values round to zero at the native clock's observed precision.
+
+There were 28 dispatched calculations and 12 stale results, with no recorded replacement of debounce-ready pending revisions. The rapid burst was primarily absorbed by debounce, and the observed keys were spaced far enough apart for calculations to complete. Thus this run verifies native behavior with the bounded scheduler, but **does not prove its backlog reduction under native overload**; the controlled slow-worker test provides that evidence. Worker calculations remain materially slower than the Node benchmark even while native input stays responsive. File-open preparation and marker freshness are remaining targets.
+
+All three fixture file hashes were verified unchanged after discarding edits. The fixture tab was closed, capture stopped, and the primary repository restored. Raw local trace: `githeaven-native-editor.json` in the system temporary directory.
