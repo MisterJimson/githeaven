@@ -1,3 +1,4 @@
+import { ImageDiff, isImagePath } from "./ImageDiff";
 import {
   memo,
   createContext,
@@ -290,6 +291,7 @@ export const DiffSurface = memo(function DiffSurface(props: DiffProps) {
     source === "commit" ? (oldPath ?? null) : null,
   ]);
   // Keep the previous document mounted while another file is prepared.
+  if (isImagePath(path)) return <ImageDiff key={root} {...props} />;
   return <LiveDiff key={root} {...props} comparison={comparison} />;
 });
 

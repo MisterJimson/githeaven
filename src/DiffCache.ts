@@ -1,3 +1,4 @@
+import { isImagePath } from "./ImageDiff";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { measureAsync, startSpan, countEvent } from "./performance";
 import { call } from "./api";
@@ -172,6 +173,8 @@ export class DiffCache {
       key,
       async () => {
         assertCurrent("queue");
+        if (isImagePath(selection.path))
+          throw new Error("Images use the image comparison viewer.");
         const previous = this.entries.get(key);
         const currentSource = previous?.refresh === refresh;
         if (currentSource) countEvent("diff.prepare.source-cache-hit");

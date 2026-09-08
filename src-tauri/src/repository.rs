@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::Serialize;
 use std::{
     collections::BTreeSet,
@@ -399,6 +400,16 @@ pub fn main_file_contents(root: &Path, path: &str) -> Result<Option<String>, Str
     read_blob(root, oid.trim(), path)
 }
 fn read_blob(root: &Path, revision: &str, path: &str) -> Result<Option<String>, String> {
+    read_blob_bytes(root, revision, path, MAX_FILE)?
+        .map(text_content)
+        .transpose()
+}
+fn read_blob_bytes(
+    root: &Path,
+    revision: &str,
+    path: &str,
+    limit: usize,
+) -> Result<Option<Vec<u8>>, String> {
     let normalized = relative(path)?
         .components()
         .filter_map(|part| match part {
@@ -443,10 +454,14 @@ fn read_blob(root: &Path, revision: &str, path: &str) -> Result<Option<String>, 
         }
         fields[2]
     };
-    read_blob_object(root, oid).map(Some)
+    read_blob_object_bytes(root, oid, limit).map(Some)
 }
 
+#[cfg(test)]
 fn read_blob_object(root: &Path, oid: &str) -> Result<String, String> {
+    text_content(read_blob_object_bytes(root, oid, MAX_FILE)?)
+}
+fn read_blob_object_bytes(root: &Path, oid: &str, limit: usize) -> Result<Vec<u8>, String> {
     validate_oid(oid)?;
     let mut child = git_command(root, &["cat-file", "--batch"])
         .stdin(Stdio::piped())
@@ -471,8 +486,11 @@ fn read_blob_object(root: &Path, oid: &str) -> Result<String, String> {
             return Err("Git returned an invalid or missing blob.".into());
         }
         let size: usize = fields[2].parse().map_err(|_| "Invalid blob size.")?;
-        if size > MAX_FILE {
-            return Err("File exceeds the prototype's 2 MB text limit.".into());
+        if size > limit {
+            return Err(format!(
+                "File exceeds the {} MB preview limit.",
+                limit / 1024 / 1024
+            ));
         }
         let mut bytes = vec![0; size];
         output.read_exact(&mut bytes).map_err(|e| e.to_string())?;
@@ -481,7 +499,7 @@ fn read_blob_object(root: &Path, oid: &str) -> Result<String, String> {
         if newline != [b'\n'] {
             return Err("Invalid Git blob terminator.".into());
         }
-        text_content(bytes)
+        Ok(bytes)
     })();
     // In particular, do not drain/allocate oversized blobs after reading the header.
     if result.is_err() {
@@ -495,6 +513,35 @@ fn read_blob_object(root: &Path, oid: &str) -> Result<String, String> {
     Ok(content)
 }
 
+const MAX_IMAGE: usize = 10 * 1024 * 1024;
+fn image_mime(path: &str) -> Option<&'static str> {
+    match Path::new(path)
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        "avif" => Some("image/avif"),
+        "bmp" => Some("image/bmp"),
+        "ico" => Some("image/x-icon"),
+        _ => None,
+    }
+}
+fn image_url(mime: &str, bytes: Vec<u8>) -> Result<String, String> {
+    if bytes.len() > MAX_IMAGE {
+        return Err("Image exceeds the 10 MB preview limit.".into());
+    }
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 pub fn versions(
     root: &Path,
     path: &str,
@@ -506,24 +553,52 @@ pub fn versions(
     let start = Instant::now();
     relative(path)?;
     let old_path = old_path.unwrap_or(path);
+    let mime = image_mime(path);
+    let blob = |revision: &str, path: &str| -> Result<Option<String>, String> {
+        match mime {
+            Some(mime) => read_blob_bytes(root, revision, path, MAX_IMAGE)?
+                .map(|bytes| image_url(mime, bytes))
+                .transpose(),
+            None => read_blob(root, revision, path),
+        }
+    };
+    let working = || -> Result<Option<String>, String> {
+        if let Some(mime) = mime {
+            let full = safe_path(root, path)?;
+            let file = match fs::File::open(full) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e.to_string()),
+            };
+            if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+                return Err("This path is not a regular file.".into());
+            }
+            let mut bytes = Vec::new();
+            file.take((MAX_IMAGE + 1) as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            return image_url(mime, bytes).map(Some);
+        }
+        read_working(root, path)
+    };
     let (old, new) = match source {
-        "worktree" => (read_blob(root, "", path)?, read_working(root, path)?),
+        "worktree" => (blob("", path)?, working()?),
         "index" => {
             let old = if git(root, &["rev-parse", "--verify", "HEAD"]).is_ok() {
-                read_blob(root, "HEAD", old_path)?
+                blob("HEAD", old_path)?
             } else {
                 None
             };
-            (old, read_blob(root, "", path)?)
+            (old, blob("", path)?)
         }
         "commit" => {
             let oid = oid.ok_or("Choose a commit first.")?;
             let parent = parent_for(root, oid, parent)?;
             let old = match parent {
-                Some(p) => read_blob(root, &p, path)?,
+                Some(p) => blob(&p, old_path)?,
                 None => None,
             };
-            (old, read_blob(root, oid, path)?)
+            (old, blob(oid, path)?)
         }
         _ => return Err("Unknown comparison type.".into()),
     };
@@ -791,6 +866,51 @@ mod tests {
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
         );
+    }
+
+    #[test]
+    fn image_versions_compare_index_worktree_commits_and_renames() {
+        let dir = repo();
+        let r = dir.path();
+        let first = vec![137, 80, 78, 71, 0, 1];
+        let second = vec![137, 80, 78, 71, 0, 2];
+        let third = vec![137, 80, 78, 71, 0, 3];
+        fs::write(r.join("image.png"), &first).unwrap();
+        let added = versions(r, "image.png", "worktree", None, None, None).unwrap();
+        assert!(added.old.is_none());
+        assert_eq!(
+            added.new,
+            Some(image_url("image/png", first.clone()).unwrap())
+        );
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Image"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        fs::write(r.join("image.png"), &second).unwrap();
+        stage_all(r, false).unwrap();
+        fs::write(r.join("image.png"), &third).unwrap();
+        let staged = versions(r, "image.png", "index", None, None, None).unwrap();
+        let working = versions(r, "image.png", "worktree", None, None, None).unwrap();
+        assert_eq!(staged.old, added.new);
+        assert_eq!(staged.new, Some(image_url("image/png", second).unwrap()));
+        assert_eq!(working.old, staged.new);
+        assert_eq!(
+            working.new,
+            Some(image_url("image/png", third.clone()).unwrap())
+        );
+        let historical = versions(r, "image.png", "commit", Some(oid.trim()), None, None).unwrap();
+        assert!(historical.old.is_none());
+        assert_eq!(historical.new, added.new);
+        fs::rename(r.join("image.png"), r.join("renamed.png")).unwrap();
+        stage_all(r, false).unwrap();
+        let renamed = versions(r, "renamed.png", "index", None, None, Some("image.png")).unwrap();
+        assert_eq!(renamed.old, added.new);
+        assert_eq!(renamed.new, working.new);
+        fs::remove_file(r.join("renamed.png")).unwrap();
+        let deleted = versions(r, "renamed.png", "worktree", None, None, None).unwrap();
+        assert_eq!(deleted.old, renamed.new);
+        assert!(deleted.new.is_none());
+        assert!(image_url("image/png", vec![0; MAX_IMAGE + 1]).is_err());
+        assert!(versions(r, "../image.png", "worktree", None, None, None).is_err());
     }
 
     #[test]
