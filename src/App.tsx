@@ -1592,7 +1592,7 @@ export function App() {
                             branchFilter={branchFilter}
                             onFilter={filterBranch}
                             onCheckout={checkoutBranch}
-                            onDelete={async (ref) => {
+                            onDelete={async (ref, force = false) => {
                               setBusy("Deleting branch");
                               try {
                                 await call("delete_branch", {
@@ -1600,6 +1600,7 @@ export function App() {
                                   name: ref.name,
                                   kind: ref.kind,
                                   oid: ref.oid,
+                                  force,
                                 });
                                 setActiveRef(null);
                                 setBranchFilter("");

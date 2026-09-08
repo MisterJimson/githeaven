@@ -26,7 +26,7 @@ export const BranchSidebar = memo(function BranchSidebar({
   branchFilter: string;
   onFilter: (oid: string) => void;
   onCheckout?: (ref: Reference) => void;
-  onDelete?: (ref: Reference) => Promise<void>;
+  onDelete?: (ref: Reference, force?: boolean) => Promise<void>;
   busy?: boolean;
   activeRef?: Reference | null;
 }) {
@@ -197,6 +197,7 @@ export const BranchSidebar = memo(function BranchSidebar({
         <BranchContextMenu
           key={`${context.ref.kind}:${context.ref.name}`}
           target={context}
+          refs={refs}
           checkedOut={branch}
           onClose={() => setContext(null)}
           onDelete={onDelete}

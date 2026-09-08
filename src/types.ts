@@ -8,6 +8,7 @@ export interface Commit {
   subject: string;
 }
 export interface Reference {
+  upstream?: string | null;
   name: string;
   oid: string;
   kind: "local" | "remote" | "tag";

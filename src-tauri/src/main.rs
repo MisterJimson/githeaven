@@ -403,13 +403,14 @@ async fn delete_branch(
     name: String,
     kind: String,
     oid: String,
+    force: bool,
     state: State<'_, Session>,
 ) -> Result<(), String> {
     let root = state.checked(&root)?;
     let writes = state.writes.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = writes.lock().map_err(|e| e.to_string())?;
-        repository::delete_branch(&root, &name, &kind, &oid)
+        repository::delete_branch(&root, &name, &kind, &oid, force)
     })
     .await
     .map_err(|e| e.to_string())?

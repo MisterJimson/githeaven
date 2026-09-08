@@ -30,6 +30,7 @@ pub struct Commit {
 }
 #[derive(Serialize)]
 pub struct Reference {
+    pub upstream: Option<String>,
     pub name: String,
     pub oid: String,
     pub kind: String,
@@ -185,7 +186,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                     root,
                     &[
                         "for-each-ref",
-                        "--format=%(refname)%09%(objectname)",
+                        "--format=%(refname)%09%(objectname)%09%(upstream)",
                         "refs/heads",
                         "refs/remotes",
                         "refs/tags",
@@ -237,7 +238,13 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                 .unwrap_or_default()
                 .lines()
                 .filter_map(|s| {
-                    let (name, oid) = s.split_once('\t')?;
+                    let mut fields = s.split('\t');
+                    let name = fields.next()?;
+                    let oid = fields.next()?;
+                    let upstream = fields
+                        .next()
+                        .and_then(|value| value.strip_prefix("refs/remotes/"))
+                        .map(str::to_string);
                     let (kind, name) = if let Some(s) = name.strip_prefix("refs/heads/") {
                         ("local", s)
                     } else if let Some(s) = name.strip_prefix("refs/remotes/") {
@@ -246,6 +253,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                         ("tag", name.trim_start_matches("refs/tags/"))
                     };
                     Some(Reference {
+                        upstream,
                         name: name.into(),
                         oid: oid.into(),
                         kind: kind.into(),
@@ -687,7 +695,13 @@ pub fn stage_all(root: &Path, unstage: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn delete_branch(root: &Path, name: &str, kind: &str, oid: &str) -> Result<(), String> {
+pub fn delete_branch(
+    root: &Path,
+    name: &str,
+    kind: &str,
+    oid: &str,
+    force: bool,
+) -> Result<(), String> {
     validate_oid(oid)?;
     let namespace = match kind {
         "local" => "heads",
@@ -701,7 +715,10 @@ pub fn delete_branch(root: &Path, name: &str, kind: &str, oid: &str) -> Result<(
         return Err("Branch changed since it was selected. Reopen the menu and try again.".into());
     }
     if kind == "local" {
-        git(root, &["branch", "-d", "--", name])?;
+        git(
+            root,
+            &["branch", if force { "-D" } else { "-d" }, "--", name],
+        )?;
     } else {
         if git(root, &["symbolic-ref", "-q", &full]).is_ok() {
             return Err("A remote HEAD alias cannot be deleted.".into());
@@ -918,16 +935,16 @@ mod tests {
         git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
         let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
         let oid = oid.trim();
-        assert!(delete_branch(r, "main", "local", oid).is_err());
+        assert!(delete_branch(r, "main", "local", oid, false).is_err());
         git(r, &["branch", "remove-me"]).unwrap();
-        assert!(delete_branch(r, "remove-me", "local", &"0".repeat(40)).is_err());
-        delete_branch(r, "remove-me", "local", oid).unwrap();
+        assert!(delete_branch(r, "remove-me", "local", &"0".repeat(40), false).is_err());
+        delete_branch(r, "remove-me", "local", oid, false).unwrap();
         assert!(git(r, &["show-ref", "--verify", "refs/heads/remove-me"]).is_err());
         git(r, &["checkout", "-b", "unmerged"]).unwrap();
         git(r, &["commit", "--allow-empty", "-m", "Unmerged"]).unwrap();
         let unmerged = git_text(r, &["rev-parse", "HEAD"]).unwrap();
         git(r, &["checkout", "main"]).unwrap();
-        assert!(delete_branch(r, "unmerged", "local", unmerged.trim()).is_err());
+        assert!(delete_branch(r, "unmerged", "local", unmerged.trim(), false).is_err());
         let remote = tempfile::tempdir().unwrap();
         git(remote.path(), &["init", "--bare"]).unwrap();
         git(
@@ -936,7 +953,7 @@ mod tests {
         )
         .unwrap();
         git(r, &["push", "origin", "main:remove-me"]).unwrap();
-        delete_branch(r, "origin/remove-me", "remote", oid).unwrap();
+        delete_branch(r, "origin/remove-me", "remote", oid, false).unwrap();
         assert!(git(
             remote.path(),
             &["show-ref", "--verify", "refs/heads/remove-me"]
@@ -949,7 +966,10 @@ mod tests {
             &["push", remote.path().to_str().unwrap(), "unmerged:changed"],
         )
         .unwrap();
-        assert!(delete_branch(r, "origin/changed", "remote", oid).is_err());
+        assert!(delete_branch(r, "origin/changed", "remote", oid, false).is_err());
+        assert!(delete_branch(r, "main", "local", oid, true).is_err());
+        delete_branch(r, "unmerged", "local", unmerged.trim(), true).unwrap();
+        assert!(git(r, &["show-ref", "--verify", "refs/heads/unmerged"]).is_err());
     }
 
     #[test]
