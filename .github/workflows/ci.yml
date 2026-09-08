@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Githeaven.app
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/githeaven"
+          lipo "$app/Contents/MacOS/githeaven" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
           mkdir release-assets
           ditto -c -k --sequesterRsrc --keepParent "$app" "release-assets/Githeaven_${RELEASE_TAG}_universal.app.zip"
