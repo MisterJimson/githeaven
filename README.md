@@ -38,6 +38,7 @@ Open the `.demo` directory printed by that command. The script leaves an existin
 - Pierre's editable CodeView, explicit save, Cmd/Ctrl+S, undo, and find/replace.
 - Focused file/diff font sizing with Cmd/Ctrl+plus/minus.
 - Unsaved-edit navigation/close protection and external-change detection.
+- Pull and Push controls in the top toolbar and command palette. Pull uses the configured upstream and `pull.rebase` / `pull.ff` strategy; unsaved editor drafts prompt before pulling. Both operations show progress and errors, and refresh repository state afterward.
 - File-level and bulk staging/unstaging, plus local commits with summary and description, using installed Git and its normal hooks/signing behavior. “Push after committing” remembers its last setting across restarts and runs a normal `git push` after a successful commit. It uses your configured remote/upstream and credential helpers; a failed push leaves the local commit intact and reports the error.
 - A unified Git workspace: branches on the left, WIP and commit graph in the center, contextual staging/composer or commit details on the right. Select a file for a diff; Graph returns to the retained history.
 - Searchable, collapsible branch groups. Click a branch to browse its loaded ancestry; double-click to check out a local branch or create a tracking branch from a remote ref. Existing local branches and conflicting working changes are never force-overwritten.

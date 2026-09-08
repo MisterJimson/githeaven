@@ -1403,7 +1403,7 @@ it("remembers push-after-commit and pushes only after the commit succeeds", asyn
   fireEvent.click(screen.getByRole("button", { name: "Commit 1 file" }));
   expect(call).not.toHaveBeenCalledWith("push_branch", expect.anything());
   await act(async () => created.resolve());
-  await screen.findByRole("button", { name: "Pushing…" });
+  await screen.findAllByRole("button", { name: "Pushing…" });
   expect(call).toHaveBeenCalledWith("push_branch", { root: "/sample" });
   await act(async () => pushed.resolve());
   await screen.findByText("Commit created and pushed");
@@ -1548,4 +1548,83 @@ it("dims search misses without changing graph rows, lanes, selection, or scroll"
       (sample) => sample.name === "history.layout",
     ),
   ).toHaveLength(0);
+});
+
+it.each(["push", "pull"])(
+  "runs toolbar %s once and retains the workspace during network work",
+  async (operation) => {
+    await openWorkspace();
+    const snapshot = await vi.mocked(call).mock.results[0].value;
+    const network = deferred<void>();
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === `${operation}_branch`) return network.promise;
+      if (command === "refresh_repository") return snapshot;
+      throw new Error(command);
+    });
+    const graph = screen.getByRole("listbox", { name: "Commit history" });
+    const toolbar = within(
+      screen.getByRole("group", { name: "Sync repository" }),
+    );
+    fireEvent.click(
+      toolbar.getByRole("button", {
+        name: operation === "push" ? "Push" : "Pull",
+      }),
+    );
+    expect(call).toHaveBeenCalledWith(`${operation}_branch`, {
+      root: "/sample",
+    });
+    expect(
+      toolbar
+        .getAllByRole("button")
+        .every((button) => (button as HTMLButtonElement).disabled),
+    ).toBe(true);
+    expect(screen.getByRole("listbox", { name: "Commit history" })).toBe(graph);
+    await act(async () => network.resolve());
+    await screen.findByText(
+      operation === "push" ? "Push complete" : "Pull complete",
+    );
+    await waitFor(() =>
+      expect(
+        toolbar
+          .getAllByRole("button")
+          .every((button) => !(button as HTMLButtonElement).disabled),
+      ).toBe(true),
+    );
+    expect(call).toHaveBeenCalledWith(
+      "refresh_repository",
+      expect.objectContaining({ root: "/sample", history: true }),
+    );
+  },
+);
+
+it("refreshes after a failed pull and keeps the error visible", async () => {
+  await openWorkspace();
+  const snapshot = await vi.mocked(call).mock.results[0].value;
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "pull_branch") throw new Error("Merge conflict");
+    if (command === "refresh_repository") return snapshot;
+    throw new Error(command);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Pull" }));
+  await screen.findByText(/Pull failed:.*Merge conflict/);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Pull" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(call).toHaveBeenCalledWith(
+    "refresh_repository",
+    expect.objectContaining({ history: true }),
+  );
+});
+
+it("asks before pulling over an unsaved editor draft", async () => {
+  const editor = await openEditor();
+  fireEvent.change(editor, { target: { value: "unsaved draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Pull" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(call).not.toHaveBeenCalledWith("pull_branch", expect.anything());
+  fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+  expect((editor as HTMLTextAreaElement).value).toBe("unsaved draft");
 });

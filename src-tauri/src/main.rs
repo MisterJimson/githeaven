@@ -367,6 +367,18 @@ async fn checkout_branch(
 }
 
 #[tauri::command]
+async fn pull_branch(root: String, state: State<'_, Session>) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let lock = state.writes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        pull(&root)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn push_branch(root: String, state: State<'_, Session>) -> Result<(), String> {
     let root = state.checked(&root)?;
     let lock = state.writes.clone();
@@ -449,7 +461,8 @@ fn main() {
             stage_all_changes,
             checkout_branch,
             create_commit,
-            push_branch
+            push_branch,
+            pull_branch
         ])
         .run(tauri::generate_context!())
         .expect("Unable to start Githeaven");

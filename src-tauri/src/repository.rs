@@ -103,6 +103,10 @@ pub fn push(root: &Path) -> Result<(), String> {
     // Never force a push or silently choose a remote for a new branch.
     git(root, &["push"]).map(|_| ())
 }
+pub fn pull(root: &Path) -> Result<(), String> {
+    // Respect pull.rebase / pull.ff without opening a terminal commit editor.
+    git(root, &["pull", "--no-edit"]).map(|_| ())
+}
 pub fn discover(path: &str) -> Result<PathBuf, String> {
     let root = git_text(Path::new(path), &["rev-parse", "--show-toplevel"])?;
     fs::canonicalize(root.trim_end_matches(['\n', '\r'])).map_err(|e| e.to_string())
@@ -695,6 +699,56 @@ mod tests {
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
     }
+    #[test]
+    fn pull_updates_from_upstream_and_preserves_overlapping_working_edits() {
+        let origin = repo();
+        let remote = tempfile::tempdir().unwrap();
+        git(remote.path(), &["init", "--bare", "-b", "main"]).unwrap();
+        let r = origin.path();
+        fs::write(r.join("file.txt"), "base\n").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        git(r, &["push", remote.path().to_str().unwrap(), "HEAD:main"]).unwrap();
+        let local = repo();
+        let l = local.path();
+        git(
+            l,
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .unwrap();
+        git(l, &["fetch", "origin"]).unwrap();
+        git(l, &["reset", "--hard", "origin/main"]).unwrap();
+        git(l, &["branch", "--set-upstream-to=origin/main", "main"]).unwrap();
+        git(l, &["config", "pull.ff", "only"]).unwrap();
+        fs::write(r.join("file.txt"), "remote update\n").unwrap();
+        git(r, &["commit", "-am", "Update"]).unwrap();
+        git(r, &["push", remote.path().to_str().unwrap(), "HEAD:main"]).unwrap();
+        fs::write(l.join("file.txt"), "local draft\n").unwrap();
+        let head = git_text(l, &["rev-parse", "HEAD"]).unwrap();
+        assert!(pull(l).is_err());
+        assert_eq!(
+            fs::read_to_string(l.join("file.txt")).unwrap(),
+            "local draft\n"
+        );
+        assert_eq!(git_text(l, &["rev-parse", "HEAD"]).unwrap(), head);
+        fs::write(l.join("file.txt"), "base\n").unwrap();
+        pull(l).unwrap();
+        assert_eq!(
+            fs::read_to_string(l.join("file.txt")).unwrap(),
+            "remote update\n"
+        );
+        assert_eq!(
+            git_text(l, &["rev-parse", "HEAD"]).unwrap(),
+            git_text(r, &["rev-parse", "HEAD"]).unwrap()
+        );
+        git(l, &["commit", "--allow-empty", "-m", "Local divergence"]).unwrap();
+        git(r, &["commit", "--allow-empty", "-m", "Remote divergence"]).unwrap();
+        git(r, &["push", remote.path().to_str().unwrap(), "HEAD:main"]).unwrap();
+        let head = git_text(l, &["rev-parse", "HEAD"]).unwrap();
+        assert!(pull(l).is_err());
+        assert_eq!(git_text(l, &["rev-parse", "HEAD"]).unwrap(), head);
+    }
+
     #[test]
     fn push_uses_upstream_and_preserves_local_commit_on_rejection() {
         let local = repo();

@@ -12,6 +12,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   ArrowUpRight,
   Columns2,
   FileCode2,
@@ -1156,6 +1158,23 @@ export function App() {
     if (viewed)
       enqueueStage({ path: viewed.path, unstage: viewed.source === "index" });
   }
+  async function syncRemote(operation: "push" | "pull") {
+    if (!repo || busy || stageRunning.current) return;
+    setBusy(operation === "push" ? "Pushing" : "Pulling");
+    setError("");
+    try {
+      await call(`${operation}_branch`, { root: repo.root });
+      setNotice(operation === "push" ? "Push complete" : "Pull complete");
+    } catch (e) {
+      setError(
+        `${operation === "push" ? "Push" : "Pull"} failed: ${errorText(e)}`,
+      );
+    } finally {
+      // A failed pull can still fetch refs or leave a merge conflict to show.
+      await refresh(true);
+      setBusy("");
+    }
+  }
   async function commit() {
     if (!repo || stageRunning.current || busy || dirtyRef.current) return;
     setBusy("Committing");
@@ -1234,6 +1253,8 @@ export function App() {
         ["commits", "Search commit history"],
         ["find", "Go to file…"],
         ["refresh", "Refresh repository"],
+        ["pull", "Pull current branch"],
+        ["push", "Push current branch"],
         ["split", "Toggle split / unified diff"],
       ].map(([value, label]): QuickItem => ({
         id: value,
@@ -1367,6 +1388,10 @@ export function App() {
           case "refresh":
             void refresh(true);
             break;
+          case "pull":
+          case "push":
+            void syncRemote(item.value);
+            break;
           case "split":
             setSplit((value) => !value);
             break;
@@ -1464,6 +1489,39 @@ export function App() {
                 </button>
               ))}
             </nav>
+            <div className="toolbar-spacer" />
+            <div
+              className="remote-actions"
+              role="group"
+              aria-label="Sync repository"
+            >
+              <button
+                className="remote-action"
+                disabled={!!busy || indexPending}
+                title="Pull current branch using its configured upstream and pull strategy"
+                onClick={() => navigate(() => void syncRemote("pull"))}
+              >
+                <span>{busy === "Pulling" ? "Pulling…" : "Pull"}</span>
+                {busy === "Pulling" ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <ArrowDownToLine size={15} />
+                )}
+              </button>
+              <button
+                className="remote-action"
+                disabled={!!busy || indexPending}
+                title="Push current branch using its configured remote"
+                onClick={() => void syncRemote("push")}
+              >
+                <span>{busy === "Pushing" ? "Pushing…" : "Push"}</span>
+                {busy === "Pushing" ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <ArrowUpFromLine size={15} />
+                )}
+              </button>
+            </div>
             <div className="toolbar-spacer" />
             {mode === "history" && (
               <label className="search">
