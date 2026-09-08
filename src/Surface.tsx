@@ -17,7 +17,11 @@ import {
   useWorkerPool,
   type CodeViewHandle,
 } from "@pierre/diffs/react";
-import { Editor, type EditorFactory } from "@pierre/diffs/edit";
+import {
+  Editor,
+  resolveEditorCommandFromKeyboardEvent,
+  type EditorFactory,
+} from "@pierre/diffs/edit";
 import {
   getSharedHighlighter,
   getHighlighterIfLoaded,
@@ -32,6 +36,7 @@ import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
 import { countEvent, registerGauge } from "./performance";
 import { startForegroundTiming } from "./timing";
+import { measureEditorNavigation } from "./editorNavigation";
 import type { Change, Selection, Versions } from "./types";
 
 const poolOptions = {
@@ -475,6 +480,11 @@ export const EditorSurface = memo(function EditorSurface({
 }) {
   const { font, onKeyDownCapture } = useViewerFont("editor");
   const session = selectedSession ?? emptyEditorSession;
+  const cancelNavigation = useRef<(() => void) | undefined>(undefined);
+  useEffect(
+    () => () => cancelNavigation.current?.(),
+    [session.path, session.version],
+  );
   const viewportHighlight = useMemo(() => {
     const highlighter = getHighlighterIfLoaded();
     return (
@@ -564,7 +574,55 @@ export const EditorSurface = memo(function EditorSurface({
       className="editor-live"
       tabIndex={0}
       aria-label="File viewer"
-      onKeyDownCapture={onKeyDownCapture}
+      onKeyDownCapture={(event) => {
+        onKeyDownCapture(event);
+        cancelNavigation.current?.();
+        const command = resolveEditorCommandFromKeyboardEvent(
+          event.nativeEvent,
+        );
+        if (
+          event.isDefaultPrevented() ||
+          event.nativeEvent.isComposing ||
+          (command !== "moveCursorToDocStart" &&
+            command !== "moveCursorToDocEnd") ||
+          !event.nativeEvent
+            .composedPath()
+            .some(
+              (node) =>
+                node instanceof HTMLElement &&
+                node.getAttribute("contenteditable") === "true",
+            )
+        )
+          return;
+        const editor = view.current?.getEditor("editor");
+        const doc = editor?.getEditState()?.document;
+        if (editor && doc && host.current) {
+          const line = command === "moveCursorToDocStart" ? 1 : doc.lineCount;
+          cancelNavigation.current = measureEditorNavigation(
+            host.current,
+            line,
+            command === "moveCursorToDocStart" ? "start" : "end",
+          );
+          event.preventDefault();
+          event.stopPropagation();
+          // Update the caret without native scrolling; CodeView owns the
+          // virtual layout and can reach the destination directly.
+          editor.focus({
+            lineNumber: line,
+            character:
+              command === "moveCursorToDocEnd"
+                ? doc.getLineLength(line - 1)
+                : 0,
+            preventScroll: true,
+          });
+          view.current?.scrollTo({
+            type: "line",
+            id: "editor",
+            lineNumber: line,
+            behavior: "instant",
+          });
+        }
+      }}
     >
       <CodeView
         ref={view}

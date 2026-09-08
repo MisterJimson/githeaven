@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   type Ref,
   type ReactNode,
 } from "react";
@@ -23,6 +24,9 @@ import type { Versions } from "./types";
 const highlightPool = vi.hoisted(() => ({ primeDiffHighlightCache: vi.fn() }));
 const installed = vi.hoisted(() => vi.fn());
 const scrollTo = vi.hoisted(() => vi.fn());
+const navigation = vi.hoisted(() => vi.fn(() => vi.fn()));
+const focusEditor = vi.hoisted(() => vi.fn());
+vi.mock("./editorNavigation", () => ({ measureEditorNavigation: navigation }));
 vi.mock("./api", () => ({ call: vi.fn(), errorText: String }));
 vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: class {} }));
 vi.mock("@pierre/diffs/react", () => ({
@@ -43,12 +47,20 @@ vi.mock("@pierre/diffs/react", () => ({
     };
     ref: Ref<CodeViewHandle<undefined, undefined>>;
   }) => {
+    const document = useMemo(
+      () => ({ lineCount: 30_001, getLineLength: () => 12 }),
+      [items],
+    );
     useImperativeHandle(
       ref,
       () =>
         ({
           getItem: (id: string) => items.find((item) => item.id === id),
           scrollTo,
+          getEditor: () => ({
+            focus: focusEditor,
+            getEditState: () => ({ document }),
+          }),
         }) as unknown as CodeViewHandle<undefined, undefined>,
       [items],
     );
@@ -59,6 +71,8 @@ vi.mock("@pierre/diffs/react", () => ({
     const item = items[0];
     return (
       <div
+        contentEditable={item.type === "file"}
+        suppressContentEditableWarning
         data-testid="viewer"
         data-css={options.unsafeCSS}
         data-line-height={options.itemMetrics?.lineHeight}
@@ -207,6 +221,50 @@ it("rejects superseded parses and resets only when navigating to another compari
   expect(screen.getByTestId("viewer")).toBe(previous);
   expect(scrollTo.mock.calls.length).toBe(resets + 1);
   expect(screen.getByTestId("viewer").textContent).toBe("other");
+});
+
+it("measures and directly scrolls boundary navigation from Pierre's contenteditable surface", async () => {
+  render(
+    <EditorSurface
+      session={{ path: "one.ts", contents: "one", original: "one", version: 1 }}
+      onChange={vi.fn()}
+      onReady={vi.fn()}
+    />,
+  );
+  fireEvent.keyDown(screen.getByTestId("viewer"), {
+    key: "End",
+    ctrlKey: true,
+  });
+  expect(navigation).toHaveBeenCalledWith(
+    screen.getByLabelText("File viewer"),
+    30_001,
+    "end",
+  );
+  expect(focusEditor).toHaveBeenCalledWith({
+    lineNumber: 30_001,
+    character: 12,
+    preventScroll: true,
+  });
+  await waitFor(() =>
+    expect(scrollTo).toHaveBeenCalledWith({
+      type: "line",
+      id: "editor",
+      lineNumber: 30_001,
+      behavior: "instant",
+    }),
+  );
+  fireEvent.keyDown(screen.getByTestId("viewer"), {
+    key: "Home",
+    ctrlKey: true,
+  });
+  await waitFor(() =>
+    expect(scrollTo).toHaveBeenCalledWith({
+      type: "line",
+      id: "editor",
+      lineNumber: 1,
+      behavior: "instant",
+    }),
+  );
 });
 
 it("warms one editor slot and replaces documents without remounting the viewport", () => {
