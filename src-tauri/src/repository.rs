@@ -586,10 +586,9 @@ pub fn stage(root: &Path, path: &str, unstage: bool) -> Result<(), String> {
     }
     let mut args = if !unstage {
         vec!["add", "-A", "--"]
-    } else if git(root, &["rev-parse", "--verify", "HEAD"]).is_ok() {
-        vec!["reset", "-q", "HEAD", "--"]
     } else {
-        vec!["rm", "--cached", "-f", "--"]
+        // An omitted revision uses HEAD, or the empty tree on an unborn branch.
+        vec!["reset", "-q", "--"]
     };
     args.extend(paths);
     git(root, &args).map(|_| ())
@@ -598,10 +597,8 @@ pub fn stage(root: &Path, path: &str, unstage: bool) -> Result<(), String> {
 pub fn stage_all(root: &Path, unstage: bool) -> Result<(), String> {
     if !unstage {
         git(root, &["add", "-A", "--", "."])?;
-    } else if git(root, &["rev-parse", "--verify", "HEAD"]).is_ok() {
-        git(root, &["reset", "-q", "HEAD", "--", "."])?;
     } else {
-        git(root, &["rm", "-r", "--cached", "-f", "--", "."])?;
+        git(root, &["reset", "-q", "--", "."])?;
     }
     Ok(())
 }
@@ -819,6 +816,25 @@ mod tests {
         );
         assert_eq!(main_file_contents(r, "new.txt").unwrap(), None);
         assert!(main_file_contents(r, "../outside").is_err());
+    }
+    #[test]
+    fn single_unstage_on_unborn_head_preserves_other_staged_files() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("a.txt"), "staged\n").unwrap();
+        fs::write(r.join("b.txt"), "other\n").unwrap();
+        stage_all(r, false).unwrap();
+        fs::write(r.join("a.txt"), "newer worktree\n").unwrap();
+        stage(r, "a.txt", true).unwrap();
+        assert_eq!(git_text(r, &["ls-files"]).unwrap(), "b.txt\n");
+        assert_eq!(
+            fs::read_to_string(r.join("a.txt")).unwrap(),
+            "newer worktree\n"
+        );
+        assert_eq!(read_blob(r, "", "b.txt").unwrap(), Some("other\n".into()));
+        stage_all(r, true).unwrap();
+        assert!(git_text(r, &["ls-files"]).unwrap().is_empty());
+        assert_eq!(fs::read_to_string(r.join("b.txt")).unwrap(), "other\n");
     }
     #[test]
     fn bulk_staging_preserves_files_and_handles_unborn_head() {

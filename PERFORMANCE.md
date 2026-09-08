@@ -511,3 +511,21 @@ Staging now exports `git.stage.file.*`, `git.stage.all.*`, `git.unstage.file.*`,
 A failed write records an error even when reconciliation succeeds. A successful write followed by a failed refresh keeps the successful write sample but marks reconciliation and total as errors; it does not imply Git rolled the write back. Measurements contain operation categories only, with no paths or repository identities. Deferred-command tests verify that an immediate reversal remains queued through the first operation's reconciliation, total is not recorded at write completion, and each phase records once. Failure-path tests distinguish a rejected write from a rejected refresh. Each tested scenario resets its measurement window to avoid inspecting prior test samples.
 
 Inspection confirms that each queued intention currently performs a separate status refresh before the next write. Native fixture traces are still needed to establish the latency distribution and whether this reconciliation policy warrants optimization. No staging speedup or optimistic-paint latency claim is made from jsdom tests.
+
+### Remove the extra HEAD probe from unstaging
+
+Native macOS arm64 release measurements on a newly generated 32-file fixture (`githeaven-performance-ZTefMN`) showed bulk unstaging spending a median 46ms in the write invocation versus 25ms for staging. Inspection found an extra `rev-parse --verify HEAD` subprocess on every unstage, used to choose between reset and removing cached files. Using `git reset -q -- <paths>` without an explicit revision handles both HEAD and an unborn branch in one command. Single-file and bulk unstaging now use that form; staging and reconciliation are unchanged. A disposable unborn-repository probe and Rust tests verify the behavior with Apple Git 2.50.1.
+
+Two fresh release processes on the same Mac ran 20 alternating stage-all/unstage-all pairs each against the same fixture, with warm OS caches and no concurrent build during capture. The measurement window was reset before each sequence. UI automation read controls between operations, so these are serialized interactions with essentially zero queue wait, not a rapid reversal burst. No file was selected in the diff viewer.
+
+| Operation / phase | Before median / p95 ms | After median / p95 ms |
+| ----------------- | ---------------------- | --------------------- |
+| Stage write       | 25 / 46                | 24 / 31               |
+| Stage total       | 44 / 64                | 43 / 52               |
+| Unstage write     | 46 / 60                | 30 / 37               |
+| Unstage reconcile | 22 / 27                | 22 / 27               |
+| Unstage total     | 68 / 85                | 53 / 83               |
+
+Unstage median completion improved by about 22%; the total p95 barely changed. The unchanged staging command also varied between runs, and the optimized unstage maximum was higher (106ms versus 94ms), so this is a small controlled scenario, not a general tail-latency guarantee. All measured staging phases succeeded. Each trace contained 82 `refresh_repository` calls for 40 intentions, including watcher-driven refreshes beyond the 40 explicit reconciliations. Determining which additional refreshes can safely be avoided remains open. Optimistic paint latency, rapid queued reversals, single-file native performance, large repositories, and cross-platform behavior remain unverified by this capture.
+
+Full validation passed (124 frontend tests and the existing 16 Rust tests); an additional Rust preservation test subsequently passed with all 17 Rust tests. It verifies single-file unstaging on an unborn branch preserves newer working contents and another file's staged contents, then bulk unstaging leaves both files intact. The final fixture retained all 32 original working-file hashes, an empty index diff, and its single original commit. The fixture tab and notebook were closed and the primary repository restored. Raw local artifacts in the system temporary directory: `githeaven-stage-bulk-baseline.json`, `githeaven-stage-bulk-after.json`.
