@@ -286,3 +286,11 @@ For 30,000 lines on this machine, clean calculation fell from **13.111ms median 
 Scattered modifications remain expensive: 30,000 lines measured 498ms median before and 519ms after, with broad timing variation. That path still uses the same algorithm; this change makes no improvement claim for it. Native typing measurements, worker queue control and incremental calculation remain necessary follow-up work.
 
 Validation note: the first full run intermittently failed the existing App test for keeping an unsaved edit when cancelling a project switch (the mocked editor showed original contents). It passed in isolation and on the complete rerun (96 frontend / 15 Rust tests). App and its editor mock were unchanged by this optimization; the cause is not established and remains a test-stability/unsaved-edit investigation item.
+
+### Bound the editor worker backlog
+
+A controlled slow-worker test held the first result while 20 edits arrived 150ms apart, each exceeding the 120ms debounce. Before the change, all 21 jobs were sent to the worker. Ignoring their replies did not prevent their calculations or structured-clone allocations.
+
+The editor now permits one calculation in flight and stores only the latest pending revision on the page. Once the current job completes, it dispatches that revision if its debounce has elapsed. A newer keystroke clears pending readiness until its own debounce expires. Existing markers remain visible while calculations run, and stale results never replace them. File changes/unmount terminate the worker and discard pending state; late callbacks from a previous worker are ignored. Already running calculations are not interrupted.
+
+The same controlled test now sends **two jobs instead of 21** and records **19 coalesced revisions**. `editor.changes-dispatched` counts posted jobs and `editor.changes-coalesced` counts replacements of debounce-ready pending revisions; keystrokes absorbed before the debounce fires are not counted. Tests additionally cover worker completion during a new debounce, file changes, unmount, and stale callbacks. This establishes avoided queued work, not a native typing-latency result. The current calculation can still delay the newest result by its own remaining runtime; incremental diff calculation and native burst traces remain follow-up work.

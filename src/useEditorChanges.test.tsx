@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { act, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEditorChanges } from "./useEditorChanges";
 import { clearPerformanceSamples, performanceReport } from "./performance";
@@ -14,6 +20,8 @@ class Background {
   }
 }
 afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   Background.instances = [];
   clearPerformanceSamples();
@@ -91,4 +99,81 @@ it("decorates virtualized gutters without replacing text and ignores stale resul
   expect(shadow.querySelector("[data-column-number]")).toBe(row);
   unmount();
   expect(w.terminate).toHaveBeenCalled();
+});
+
+it("keeps one calculation in flight and submits only the latest debounced edit", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", Background);
+  const { result, unmount } = renderHook(() =>
+    useEditorChanges("repo", "a.txt", "initial", 1, 0),
+  );
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  const worker = Background.instances[0];
+  const first = worker.postMessage.mock.lastCall![0].id;
+  for (let i = 1; i <= 20; i++) {
+    act(() => result.current.schedule(`revision ${i}`));
+    act(() => vi.advanceTimersByTime(150));
+  }
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  act(() => worker.onmessage?.({ data: { id: first, marks: [] } }));
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+  const latest = worker.postMessage.mock.lastCall![0];
+  expect(latest.contents).toBe("revision 20");
+  expect(performanceReport().counters["editor.changes-coalesced"]).toBe(19);
+  expect(performanceReport().counters["editor.changes-dispatched"]).toBe(2);
+  act(() => worker.onmessage?.({ data: { id: latest.id, marks: [] } }));
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+  unmount();
+});
+
+it("does not dispatch a new edit before its debounce expires when the worker finishes", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", Background);
+  const { result } = renderHook(() =>
+    useEditorChanges("repo", "a.txt", "initial", 1, 0),
+  );
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  const worker = Background.instances[0];
+  const first = worker.postMessage.mock.lastCall![0].id;
+  act(() => result.current.schedule("older"));
+  act(() => vi.advanceTimersByTime(120));
+  act(() => result.current.schedule("newest"));
+  act(() => worker.onmessage?.({ data: { id: first, marks: [] } }));
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  act(() => vi.advanceTimersByTime(119));
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  act(() => vi.advanceTimersByTime(1));
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+  expect(worker.postMessage.mock.lastCall![0].contents).toBe("newest");
+});
+
+it("drops pending work on file switches and ignores late replies from terminated workers", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", Background);
+  const { result, rerender, unmount } = renderHook(
+    ({ path }) => useEditorChanges("repo", path, path, 1, 0),
+    { initialProps: { path: "a.txt" } },
+  );
+  await act(async () => {});
+  act(() => vi.advanceTimersByTime(120));
+  const previous = Background.instances[0];
+  const first = previous.postMessage.mock.lastCall![0].id;
+  act(() => result.current.schedule("old-file-pending"));
+  act(() => vi.advanceTimersByTime(120));
+  rerender({ path: "b.txt" });
+  await act(async () => {});
+  expect(previous.terminate).toHaveBeenCalledTimes(1);
+  act(() => previous.onmessage?.({ data: { id: first, marks: [] } }));
+  act(() => vi.advanceTimersByTime(120));
+  const current = Background.instances[1];
+  expect(previous.postMessage).toHaveBeenCalledTimes(1);
+  expect(current.postMessage).toHaveBeenCalledTimes(1);
+  expect(current.postMessage.mock.lastCall![0].contents).toBe("b.txt");
+  act(() => result.current.schedule("pending-on-unmount"));
+  unmount();
+  act(() => vi.advanceTimersByTime(120));
+  expect(current.postMessage).toHaveBeenCalledTimes(1);
+  expect(current.terminate).toHaveBeenCalledTimes(1);
 });

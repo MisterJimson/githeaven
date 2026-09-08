@@ -30,6 +30,8 @@ export function useEditorChanges(
   const baseline = useRef<string | null | undefined>(undefined);
   const worker = useRef<Worker | null>(null);
   const sequence = useRef(0);
+  const inFlight = useRef<number | null>(null);
+  const ready = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const paint = useCallback(() => {
     const finish = startSpan("editor.gutter-paint");
@@ -48,21 +50,42 @@ export function useEditorChanges(
     }
     finish();
   }, []);
-  const schedule = useCallback((text: string) => {
-    input.current = text;
-    const id = ++sequence.current;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      if (baseline.current !== undefined)
-        worker.current?.postMessage({
-          id,
-          old: baseline.current,
-          contents: input.current,
-        });
-    }, 120);
+  const dispatch = useCallback(() => {
+    if (
+      inFlight.current !== null ||
+      ready.current === null ||
+      baseline.current === undefined ||
+      !worker.current
+    )
+      return;
+    const id = ready.current;
+    ready.current = null;
+    inFlight.current = id;
+    countEvent("editor.changes-dispatched");
+    worker.current.postMessage({
+      id,
+      old: baseline.current,
+      contents: input.current,
+    });
   }, []);
+  const schedule = useCallback(
+    (text: string) => {
+      input.current = text;
+      if (ready.current !== null) countEvent("editor.changes-coalesced");
+      ready.current = null;
+      const id = ++sequence.current;
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        ready.current = id;
+        dispatch();
+      }, 120);
+    },
+    [dispatch],
+  );
   useEffect(() => {
     baseline.current = undefined;
+    inFlight.current = null;
+    ready.current = null;
     marks.current = [];
     paint();
     if (!root || !path) return;
@@ -82,6 +105,8 @@ export function useEditorChanges(
         };
       }>,
     ) => {
+      if (worker.current !== w) return;
+      if (event.data.id === inFlight.current) inFlight.current = null;
       const timing = event.data.timing;
       if (timing)
         recordDuration(
@@ -92,10 +117,11 @@ export function useEditorChanges(
         );
       if (event.data.id !== sequence.current) {
         countEvent("editor.changes-stale");
-        return;
+      } else {
+        marks.current = event.data.marks;
+        paint();
       }
-      marks.current = event.data.marks;
-      paint();
+      dispatch();
     };
     // Observe Pierre's virtualized gutter, including internal editor renders.
     const observer = new MutationObserver(paint);
@@ -119,10 +145,12 @@ export function useEditorChanges(
       clearTimeout(timer.current);
       w.terminate();
       worker.current = null;
+      inFlight.current = null;
+      ready.current = null;
       observer.disconnect();
       outer.disconnect();
     };
-  }, [root, path, paint]);
+  }, [root, path, paint, dispatch]);
   useEffect(() => {
     if (!root || !path) return;
     let active = true;
@@ -135,6 +163,8 @@ export function useEditorChanges(
       .catch(() => {
         if (!active) return;
         baseline.current = undefined;
+        ready.current = null;
+        clearTimeout(timer.current);
         ++sequence.current;
         marks.current = [];
         paint();
