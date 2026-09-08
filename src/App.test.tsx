@@ -342,6 +342,7 @@ it("records save rendering after two frames and cancels unfinished probes on unm
   const editor = await openEditor();
   clearPerformanceSamples();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false);
   const frames = new Map<number, FrameRequestCallback>();
   let next = 0;
   vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
@@ -362,7 +363,10 @@ it("records save rendering after two frames and cancels unfinished probes on unm
   const renderedSaves = () =>
     performanceReport().samples.filter((s) => s.name === "ui.save-ready");
   fireEvent.change(editor, { target: { value: "first save" } });
-  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  // Flush the asynchronous save and its passive effect before advancing frames.
+  await act(async () => {
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+  });
   await screen.findByText("File saved");
   expect(renderedSaves()).toHaveLength(0);
   advance();
@@ -370,7 +374,10 @@ it("records save rendering after two frames and cancels unfinished probes on unm
   advance();
   expect(renderedSaves()).toHaveLength(1);
   fireEvent.change(editor, { target: { value: "second save" } });
-  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  // Flush the asynchronous save and its passive effect before advancing frames.
+  await act(async () => {
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+  });
   await waitFor(() =>
     expect(
       performanceReport().samples.filter((s) => s.name === "save.total"),
