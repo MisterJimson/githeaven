@@ -1,35 +1,14 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startSpan } from "./performance";
+import { startForegroundTiming } from "./timing";
 import { FileCode2, Search } from "lucide-react";
 
-export interface QuickItem {
-  id: string;
-  label: string;
-  detail?: string;
-  kind: "command" | "file" | "branch" | "commit" | "worktree" | "index";
-  value: string;
-}
-
-// Consecutive characters, filename matches and word boundaries rank highest.
-export function fuzzyScore(text: string, query: string): number {
-  const haystack = text.toLowerCase();
-  const needle = query.toLowerCase().replace(/\s+/g, "");
-  if (!needle) return 0;
-  let cursor = 0,
-    previous = -2,
-    score = 0;
-  const basename = haystack.lastIndexOf("/") + 1;
-  for (const char of needle) {
-    const index = haystack.indexOf(char, cursor);
-    if (index < 0) return -Infinity;
-    score += 10 + (index === previous + 1 ? 16 : 0);
-    if (index === 0 || /[\s/._-]/.test(haystack[index - 1])) score += 14;
-    if (index >= basename) score += 4;
-    score -= (index - cursor) * 0.15;
-    previous = index;
-    cursor = index + 1;
-  }
-  return score - text.length * 0.01;
-}
+import {
+  buildQuickIndex,
+  searchQuickIndex,
+  type QuickItem,
+} from "./quickSearch";
+export { fuzzyScore, type QuickItem } from "./quickSearch";
 
 const rowHeight = 44;
 const viewportHeight = 352;
@@ -39,40 +18,35 @@ export function QuickOpen({
   items,
   onClose,
   onPick,
+  onReady,
 }: {
   mode: "commands" | "files";
   items: QuickItem[];
   onClose: () => void;
   onPick: (item: QuickItem) => void;
+  onReady?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  const ready = useRef(onReady);
+  ready.current = onReady;
+  const queryTiming = useRef<(() => number | null) | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [top, setTop] = useState(0);
+  const index = useMemo(() => {
+    const finish = startSpan("search.index");
+    const result = buildQuickIndex(items);
+    finish();
+    return result;
+  }, [items]);
   const results = useMemo(() => {
-    const priority = (item: QuickItem) =>
-      mode === "commands" && item.kind === "command" ? 0 : 1;
-    if (!query.trim())
-      return [...items].sort((a, b) => priority(a) - priority(b));
-    return items
-      .map((item) => ({
-        item,
-        score: Math.max(
-          fuzzyScore(item.label, query),
-          fuzzyScore(
-            item.kind === "file"
-              ? (item.detail ?? item.label)
-              : `${item.detail ?? ""} ${item.label}`,
-            query,
-          ) - 8,
-        ),
-      }))
-      .filter(({ score }) => Number.isFinite(score))
-      .sort((a, b) => priority(a.item) - priority(b.item) || b.score - a.score)
-      .map(({ item }) => item);
-  }, [items, query, mode]);
+    const finish = startSpan("search.rank");
+    const result = searchQuickIndex(index, query, mode);
+    finish();
+    return result;
+  }, [index, query, mode]);
   const selected = Math.min(active, Math.max(0, results.length - 1));
   const start = Math.max(0, Math.floor(top / rowHeight) - 3);
   const end = Math.min(results.length, start + 16);
@@ -82,11 +56,29 @@ export function QuickOpen({
     const modal = dialog.current!;
     modal.showModal();
     input.current?.focus();
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => ready.current?.());
+    });
     return () => {
+      cancelAnimationFrame(frame);
       modal.close();
       previous?.focus();
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const finish = queryTiming.current;
+    if (!finish) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (queryTiming.current === finish) {
+          finish();
+          queryTiming.current = null;
+        }
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [results, query]);
 
   function move(next: number) {
     next = Math.max(0, Math.min(results.length - 1, next));
@@ -140,6 +132,7 @@ export function QuickOpen({
             }
             value={query}
             onChange={(event) => {
+              queryTiming.current = startForegroundTiming("ui.palette-query");
               setQuery(event.target.value);
               setActive(0);
               setTop(0);

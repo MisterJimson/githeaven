@@ -223,3 +223,30 @@ A newer revision now replaces queued older work for the same diff comparison. In
 A controlled scheduling test submits 20 revisions with the first two reads held in flight: only three version reads and one highlight occur, the queue contains only the latest revision, and revision 20 wins. Separate tests verify parser termination, late-highlight eviction, and preservation of a syntax key shared with a newer refresh. This is deterministic avoided-work evidence, not an end-to-end latency benchmark.
 
 A native 40-write / 100ms burst recorded nine superseded results, all after highlighting had already started, and settled at **five source-cache entries and five syntax-cache entries**, with no pending or queued work. The final UI showed the restored highlighted value without an error/loading placeholder; the fixture hash was independently verified. Twelve completed live-update samples had a 208ms median and 217ms maximum, but they exclude updates superseded/coalesced during the burst and must not be interpreted as latency for all 40 writes. This native run verifies cleanup of stale highlighted results; avoiding Git reads/parsing is covered by controlled scheduling tests. Full-burst pixel-level flicker/scroll verification and faster highlighting remain separate work. Capture was stopped, the fixture tab closed, and the primary repository restored.
+
+## File and command search
+
+```sh
+pnpm perf:search /tmp/search.json
+```
+
+The deterministic Node benchmark ranks five query shapes over 10,000 and 100,000 file items plus a command. It records one index-construction measurement, three ranking warmups, 20 ranking samples, match counts, and hashes of the full ordered results. Empty queries, broad matches, selective subsequences, path matches, and misses are included. These are CPU measurements, not native input/display latency.
+
+Search previously lowercased each label/path and normalized the query twice per candidate on every keystroke, allocated score objects even for non-matches, and sorted command priority with every result comparison. It now prepares a compact index once per item-array version while the palette is mounted, normalizes each query once, allocates scored results only for matches, and ranks commands separately ahead of other matches. All matching results remain available through the existing virtualized list; none are truncated. The index is released with the palette and rebuilt when repository items change.
+
+Same-machine Node medians in milliseconds:
+
+| Files   | Query               | Before | After |
+| ------- | ------------------- | ------ | ----- |
+| 10,000  | broad `f`           | 1.89   | 0.91  |
+| 10,000  | selective `file-99` | 4.31   | 2.61  |
+| 10,000  | no match            | 1.86   | 0.49  |
+| 100,000 | broad `f`           | 18.70  | 8.50  |
+| 100,000 | selective `file-99` | 41.08  | 28.85 |
+| 100,000 | no match            | 17.93  | 4.86  |
+
+The one-time index cost was 1.97ms for 10,000 files and 16.38ms for 100,000 files, whereas the old implementation had no preprocessing cost. This shifts some work to opening the palette; it is not a claim that every interaction is faster. All ten complete benchmark ranking hashes matched the previous implementation. Another 22 complete comparisons matched across mixed item kinds, Unicode, whitespace, empty queries and both modes. Frontend tests cover command priority, bounded visible rows, keyboard selection, and item updates during a query.
+
+Native exports now include `search.index` and `search.rank` CPU spans, `ui.palette-open` from the shortcut/button request to two frame opportunities after modal focus, and `ui.palette-query` from input change to two frame opportunities after result rendering. Query text and item paths are not recorded. Queries superseded before the frame callbacks complete are omitted; closing the palette cancels callbacks. Tests verify measurement even when the result array is unchanged and cancellation on close.
+
+On the primary repository, a short native run measured nine index builds at 2–3ms and 43 rankings at 2ms median / 4ms p95. Six completed query-to-paint samples were 21–32ms. The two palette-open samples were 32ms and 91ms, too few for a meaningful p95; this identifies opening/rendering latency beyond the small ranking cost as further work. File search and command-first results were checked in the native UI, then capture was stopped and the primary workspace left open.

@@ -197,6 +197,15 @@ export function App() {
   const [capturing, setCapturing] = useState(false);
   useEffect(() => (capturing ? startRuntimeCapture() : undefined), [capturing]);
   const [quickOpen, setQuickOpen] = useState<"commands" | "files" | null>(null);
+  const paletteTiming = useRef<(() => number | null) | null>(null);
+  const openQuick = useCallback((mode: "commands" | "files") => {
+    paletteTiming.current = startForegroundTiming("ui.palette-open");
+    setQuickOpen(mode);
+  }, []);
+  const paletteReady = useCallback(() => {
+    paletteTiming.current?.();
+    paletteTiming.current = null;
+  }, []);
   const [times, setTimes] = useState<number[]>([]);
   const [startupPath] = useState(
     () => localStorage.getItem("githeaven:last-repo") ?? "",
@@ -743,7 +752,7 @@ export function App() {
       event.preventDefault();
       event.stopPropagation();
       if (!pending && !checkoutPrompt)
-        setQuickOpen(key === "p" ? "files" : "commands");
+        openQuick(key === "p" ? "files" : "commands");
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -1220,7 +1229,7 @@ export function App() {
       return;
     }
     if (item.kind === "command" && item.value === "find") {
-      setQuickOpen("files");
+      openQuick("files");
       return;
     }
     navigate(() => {
@@ -1347,7 +1356,7 @@ export function App() {
           className="icon-button"
           aria-label="Command palette"
           title="Command palette (⌘K)"
-          onClick={() => setQuickOpen("commands")}
+          onClick={() => openQuick("commands")}
         >
           <Search size={17} />
         </button>
@@ -2147,7 +2156,11 @@ export function App() {
           key={`${repo?.root}:${quickOpen}`}
           mode={quickOpen}
           items={quickOpen === "files" ? quickFiles : quickCommands}
-          onClose={() => setQuickOpen(null)}
+          onReady={paletteReady}
+          onClose={() => {
+            paletteTiming.current = null;
+            setQuickOpen(null);
+          }}
           onPick={pickQuickItem}
         />
       )}

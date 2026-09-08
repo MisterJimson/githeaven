@@ -22,7 +22,8 @@
     "perf:highlight": "node scripts/benchmark-highlight.mjs",
     "perf:fixture": "node scripts/create-performance-fixture.mjs",
     "perf:resource-series": "node scripts/profile-resource-series.mjs",
-    "perf:pulse": "node scripts/pulse-performance-fixture.mjs"
+    "perf:pulse": "node scripts/pulse-performance-fixture.mjs",
+    "perf:search": "node scripts/benchmark-search.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

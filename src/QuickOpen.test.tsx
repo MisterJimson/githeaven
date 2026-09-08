@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QuickOpen, fuzzyScore, type QuickItem } from "./QuickOpen";
+import { clearPerformanceSamples, performanceReport } from "./performance";
 
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -11,7 +18,12 @@ beforeEach(() => {
     this.removeAttribute("open");
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  clearPerformanceSamples();
+});
 const files: QuickItem[] = Array.from({ length: 10000 }, (_, i) => ({
   id: `${i}`,
   label: `file-${i}.tsx`,
@@ -93,4 +105,61 @@ it("keeps matching commands above stronger file matches while ranking each group
   ).toEqual(["GitCommand", "Go to Git historyCommand", "gitFile"]);
   fireEvent.keyDown(input, { key: "Enter" });
   expect(onPick).toHaveBeenCalledWith(items[2]);
+});
+
+it("rebuilds the search index when repository items change while searching", () => {
+  const onPick = vi.fn();
+  const old: QuickItem = {
+    id: "old",
+    label: "old.ts",
+    kind: "file",
+    value: "old.ts",
+  };
+  const next: QuickItem = {
+    id: "new",
+    label: "new.ts",
+    kind: "file",
+    value: "new.ts",
+  };
+  const props = { mode: "files" as const, onClose: vi.fn(), onPick };
+  const { rerender } = render(<QuickOpen {...props} items={[old]} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.change(input, { target: { value: "new" } });
+  expect(screen.getByText("No matches")).toBeTruthy();
+  rerender(<QuickOpen {...props} items={[next]} />);
+  expect(screen.getAllByRole("option")).toHaveLength(1);
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onPick).toHaveBeenCalledWith(next);
+});
+
+it("records query paint even when results are unchanged and cancels measurement on close", () => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  clearPerformanceSamples();
+  const onReady = vi.fn();
+  const { unmount } = render(
+    <QuickOpen
+      mode="files"
+      items={files.slice(0, 2)}
+      onClose={vi.fn()}
+      onPick={vi.fn()}
+      onReady={onReady}
+    />,
+  );
+  act(() => vi.advanceTimersByTime(40));
+  expect(onReady).toHaveBeenCalledTimes(1);
+  const input = screen.getByRole("combobox");
+  fireEvent.change(input, { target: { value: " " } });
+  act(() => vi.advanceTimersByTime(40));
+  expect(
+    performanceReport().summary.find((s) => s.name === "ui.palette-query")
+      ?.count,
+  ).toBe(1);
+  clearPerformanceSamples();
+  fireEvent.change(input, { target: { value: "new" } });
+  unmount();
+  act(() => vi.advanceTimersByTime(40));
+  expect(
+    performanceReport().summary.some((s) => s.name === "ui.palette-query"),
+  ).toBe(false);
 });
