@@ -1,6 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, GitCommitHorizontal, Monitor, Cloud, Tag } from "lucide-react";
+import {
+  ArrowUp,
+  Check,
+  GitCommitHorizontal,
+  Monitor,
+  Cloud,
+  Tag,
+} from "lucide-react";
 import { CommitNode } from "./CommitNode";
 import { startSpan } from "./performance";
 import {
@@ -84,6 +91,7 @@ export const History = memo(function History({
     }
   }
   const scroll = useRef<HTMLDivElement>(null);
+  const [showJumpTop, setShowJumpTop] = useState(false);
   const headingScroll = useRef<HTMLDivElement>(null);
   const hasWorkingChanges = workingCount > 0;
   const query = search.trim().toLowerCase();
@@ -260,6 +268,10 @@ export const History = memo(function History({
           else onSelect(entries[next]);
         }}
         onScroll={(event) => {
+          const viewport = event.currentTarget;
+          setShowJumpTop(
+            viewport.scrollTop > Math.max(600, viewport.clientHeight * 2),
+          );
           if (headingScroll.current)
             headingScroll.current.scrollLeft = event.currentTarget.scrollLeft;
           loadNearEnd();
@@ -456,6 +468,18 @@ export const History = memo(function History({
           </div>
         )}
       </div>
+      {active && showJumpTop && (
+        <button
+          className="graph-jump-top"
+          onClick={() => {
+            scroll.current?.scrollTo({ top: 0, behavior: "instant" });
+            scroll.current?.focus({ preventScroll: true });
+            setShowJumpTop(false);
+          }}
+        >
+          <ArrowUp size={14} /> Jump to top
+        </button>
+      )}
     </div>
   );
 });

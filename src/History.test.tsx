@@ -326,3 +326,35 @@ it("dims unrelated commits without changing graph geometry and only reveals bran
   rerender(<History {...props} />);
   expect(container.querySelector(".search-dimmed")).toBeNull();
 });
+
+it("shows a floating jump button only deep in history and returns to top without selecting a commit", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  const onSelect = vi.fn();
+  render(
+    <History
+      commits={[]}
+      refs={[]}
+      head={null}
+      branch="main"
+      workingCount={0}
+      workingSelected={false}
+      onSelect={onSelect}
+      onSelectWorking={vi.fn()}
+    />,
+  );
+  const viewport = screen.getByRole("listbox", { name: "Commit history" });
+  const scrollTo = vi.fn();
+  viewport.scrollTo = scrollTo;
+  expect(screen.queryByRole("button", { name: "Jump to top" })).toBeNull();
+  fireEvent.scroll(viewport, { target: { scrollTop: 1300 } });
+  fireEvent.click(screen.getByRole("button", { name: "Jump to top" }));
+  expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
+  expect(document.activeElement).toBe(viewport);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Jump to top" })).toBeNull();
+  fireEvent.scroll(viewport, { target: { scrollTop: 1300 } });
+  fireEvent.scroll(viewport, { target: { scrollTop: 200 } });
+  expect(screen.queryByRole("button", { name: "Jump to top" })).toBeNull();
+});

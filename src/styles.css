@@ -382,6 +382,7 @@ kbd {
   color: #98cbb0;
 }
 .history-table {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1869,4 +1870,23 @@ kbd {
 .branch-delete-copies strong {
   font-size: 11px;
   color: var(--muted);
+}
+
+.graph-jump-top {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 7px 12px;
+  border: 1px solid var(--mint);
+  border-radius: 20px;
+  background: var(--chrome);
+  color: var(--mint);
+  box-shadow: 0 3px 12px #0008;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.graph-jump-top:hover {
+  background: #26382e;
 }
