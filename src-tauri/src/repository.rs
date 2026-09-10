@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-const MAX_FILE: usize = 2 * 1024 * 1024;
+const MAX_FILE: usize = 10 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Debug)]
 pub struct Change {
@@ -380,7 +380,7 @@ fn safe_path(root: &Path, path: &str) -> Result<PathBuf, String> {
 }
 fn text_content(bytes: Vec<u8>) -> Result<String, String> {
     if bytes.len() > MAX_FILE {
-        return Err("File exceeds the prototype's 2 MB text limit.".into());
+        return Err("File exceeds the prototype's 10 MB text limit.".into());
     }
     if bytes.contains(&0) {
         return Err("Binary file. Text preview is unavailable.".into());
@@ -399,7 +399,7 @@ pub fn read_working(root: &Path, path: &str) -> Result<Option<String>, String> {
         return Err("This path is not a regular file.".into());
     }
     if meta.len() > MAX_FILE as u64 {
-        return Err("File exceeds the prototype's 2 MB text limit.".into());
+        return Err("File exceeds the prototype's 10 MB text limit.".into());
     }
     text_content(fs::read(full).map_err(|e| e.to_string())?).map(Some)
 }
@@ -618,7 +618,7 @@ pub fn versions(
 }
 pub fn save(root: &Path, path: &str, original: &str, contents: &str) -> Result<(), String> {
     if contents.len() > MAX_FILE {
-        return Err("File exceeds the prototype's 2 MB text limit.".into());
+        return Err("File exceeds the prototype's 10 MB text limit.".into());
     }
     let target = safe_path(root, path)?;
     if read_working(root, path)?.as_deref() != Some(original) {
@@ -1067,13 +1067,25 @@ mod tests {
             .contains("unresolved index stages"));
     }
     #[test]
+    fn text_preview_accepts_ten_megabytes() {
+        let dir = repo();
+        let r = dir.path();
+        let contents = "a".repeat(MAX_FILE);
+        fs::write(r.join("large.ts"), &contents).unwrap();
+        stage(r, "large.ts", false).unwrap();
+        let comparison = versions(r, "large.ts", "worktree", None, None, None).unwrap();
+        assert_eq!(comparison.old.as_deref(), Some(contents.as_str()));
+        assert_eq!(comparison.new.as_deref(), Some(contents.as_str()));
+    }
+
+    #[test]
     fn blob_reader_rejects_large_binary_and_non_blob_objects() {
         let dir = repo();
         let r = dir.path();
         fs::write(r.join("large.txt"), vec![b'a'; MAX_FILE + 1]).unwrap();
         fs::write(r.join("binary.txt"), [0, 1, 2]).unwrap();
         stage_all(r, false).unwrap();
-        assert!(read_blob(r, "", "large.txt").unwrap_err().contains("2 MB"));
+        assert!(read_blob(r, "", "large.txt").unwrap_err().contains("10 MB"));
         assert!(read_blob(r, "", "binary.txt").is_err());
         git(r, &["commit", "-m", "Files"]).unwrap();
         let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();

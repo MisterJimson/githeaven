@@ -62,7 +62,7 @@ The panel also records the last 50 tab switches, from the navigation action to a
 
 Measure the release build for meaningful comparisons. Include the app and its WebKit/WebView helper processes in memory totals. Do not compare a Rust parent process alone with an Electron process tree.
 
-- Text previews and editing are capped at 2 MB per file. Binary, non-UTF-8, and symlink editing are deliberately unavailable.
+- Text previews and editing are capped at 10 MB per file. Binary, non-UTF-8, and symlink editing are deliberately unavailable.
 - File explorer discovery currently lists all tracked/unignored untracked paths. Refreshes still run whole-repository Git status; lazy path discovery and incremental status are follow-up optimizations.
 - Commits are loaded in bounded batches; loading another batch currently repeats the history query up to the new limit. Search and branch filters cover only loaded history.
 - Newer selections ignore stale read results and terminate obsolete diff workers. An already-running Git subprocess is not forcibly cancelled.
