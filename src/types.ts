@@ -33,6 +33,8 @@ export interface Snapshot {
   watch_warning: string | null;
 }
 export interface Details {
+  additions?: number;
+  deletions?: number;
   message: string;
   paths: string[];
   parent: string | null;

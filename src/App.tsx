@@ -1,3 +1,4 @@
+import { CommitStats } from "./CommitStats";
 import { CommitPullRequests } from "./CommitPullRequests";
 import { CommitAvatar } from "./CommitNode";
 import {
@@ -2173,7 +2174,12 @@ export function App() {
                               </>
                             )}
                             <div className="section-label">
-                              CHANGED FILES<span>{details.paths.length}</span>
+                              CHANGED FILES
+                              <CommitStats
+                                additions={details.additions}
+                                deletions={details.deletions}
+                              />
+                              <span>{details.paths.length}</span>
                             </div>
                             <div
                               className="changes-view-toggle"

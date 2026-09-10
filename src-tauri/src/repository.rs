@@ -51,6 +51,8 @@ pub struct Snapshot {
 }
 #[derive(Serialize)]
 pub struct CommitDetails {
+    pub additions: u64,
+    pub deletions: u64,
     pub message: String,
     pub paths: Vec<String>,
     pub parent: Option<String>,
@@ -329,28 +331,49 @@ pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDet
     let start = Instant::now();
     let parent = parent_for(root, oid, parent)?;
     let message = git_text(root, &["show", "-s", "--format=%B", oid])?;
-    let paths = if let Some(p) = &parent {
-        names(git(
+    let stats = if let Some(p) = &parent {
+        git(
             root,
-            &["diff", "--no-renames", "--name-only", "-z", p, oid, "--"],
-        )?)?
+            &["diff", "--no-renames", "--numstat", "-z", p, oid, "--"],
+        )?
     } else {
-        names(git(
+        git(
             root,
             &[
                 "diff-tree",
                 "--root",
                 "--no-commit-id",
                 "--no-renames",
-                "--name-only",
+                "--numstat",
                 "-r",
                 "-z",
                 oid,
                 "--",
             ],
-        )?)?
+        )?
     };
+    let mut paths = Vec::new();
+    let mut additions = 0;
+    let mut deletions = 0;
+    for record in stats
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        let record = std::str::from_utf8(record).map_err(|_| "Invalid UTF-8 diff statistics")?;
+        let mut fields = record.splitn(3, '\t');
+        additions += fields
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        deletions += fields
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        paths.push(fields.next().ok_or("Invalid diff statistics")?.to_string());
+    }
     Ok(CommitDetails {
+        additions,
+        deletions,
         message,
         paths,
         parent,
@@ -1090,6 +1113,27 @@ mod tests {
         assert!(refs.iter().any(|r| r.name == "origin/main"));
         assert!(!refs.iter().any(|r| r.name == "origin/HEAD"));
         assert!(git(r, &["symbolic-ref", "refs/remotes/origin/HEAD"]).is_ok());
+    }
+
+    #[test]
+    fn commit_details_count_lines_including_root_and_binary_paths() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("tab\tfile.txt"), "one\ntwo\n").unwrap();
+        fs::write(r.join("image.bin"), [0, 1, 2]).unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Root"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        let d = details(r, oid.trim(), None).unwrap();
+        assert_eq!((d.additions, d.deletions), (2, 0));
+        assert!(d.paths.contains(&"tab\tfile.txt".into()));
+        assert!(d.paths.contains(&"image.bin".into()));
+        fs::write(r.join("tab\tfile.txt"), "one\nthree\nfour\n").unwrap();
+        stage_all(r, false).unwrap();
+        git(r, &["commit", "-m", "Edit"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        let d = details(r, oid.trim(), None).unwrap();
+        assert_eq!((d.additions, d.deletions), (2, 1));
     }
 
     #[test]

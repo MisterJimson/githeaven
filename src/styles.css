@@ -1871,3 +1871,32 @@ kbd {
 .graph-jump-top:hover {
   background: #26382e;
 }
+.section-label .commit-stats {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+.commit-stats .added {
+  color: #8dd9a8;
+}
+.commit-stats .removed {
+  color: #f09393;
+}
+.commit-stats .change-blocks {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0 4px;
+}
+.change-blocks i {
+  width: 5px;
+  height: 7px;
+  border-radius: 1px;
+  background: currentColor;
+}
+.change-blocks .neutral {
+  color: var(--border);
+}
