@@ -54,27 +54,27 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: src-tauri -> target
-          key: universal-release
+          key: arm64-release
       - run: pnpm install --frozen-lockfile
-      - name: Build universal macOS app and disk image
+      - name: Build Apple Silicon macOS app and disk image
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg -- --locked
+        run: pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg -- --locked
       - name: Verify and package release assets
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Githeaven.app
-          lipo "$app/Contents/MacOS/githeaven" -verify_arch arm64 x86_64
+          app=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Githeaven.app
+          lipo "$app/Contents/MacOS/githeaven" -verify_arch arm64
           codesign --verify --deep --strict "$app"
           mkdir release-assets
-          ditto -c -k --sequesterRsrc --keepParent "$app" "release-assets/Githeaven_${RELEASE_TAG}_universal.app.zip"
-          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg release-assets/
+          ditto -c -k --sequesterRsrc --keepParent "$app" "release-assets/Githeaven_${RELEASE_TAG}_arm64.app.zip"
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg release-assets/
           cd release-assets
           shasum -a 256 ./*.dmg ./*.zip > SHA256SUMS.txt
       - name: Publish alpha after successful build

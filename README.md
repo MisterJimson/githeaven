@@ -107,7 +107,7 @@ Use `pnpm lint` for oxlint, `pnpm format` to apply oxfmt, and `pnpm format:check
 
 ## macOS alpha releases
 
-GitHub Actions runs `pnpm check` on pull requests and pushes to `main`. Pushing a tag such as `v0.1.0-alpha.1` runs the same checks, then builds a universal Apple Silicon + Intel macOS app and DMG and publishes a GitHub **pre-release** with both downloads and SHA-256 checksums. No Windows or Linux artifacts are built. The first build may take longer while Rust caches warm up.
+GitHub Actions runs `pnpm check` on pull requests and pushes to `main`. Pushing a tag such as `v0.1.0-alpha.1` runs the same checks, then builds an Apple Silicon (arm64) macOS app and DMG and publishes a GitHub **pre-release** with both downloads and SHA-256 checksums. No Windows or Linux artifacts are built. The first build may take longer while Rust caches warm up.
 
 To cut an alpha:
 
@@ -120,6 +120,6 @@ To cut an alpha:
    git push origin v0.1.0-alpha.2
    ```
 
-CI rejects tags that do not match the package versions. A release is published only after checks, the universal build, architecture verification, and code-signature verification succeed. A failed run can be rerun from Actions; if a release already exists, publishing refuses to overwrite it. Use a new version/tag for changed binaries. Manually running the workflow on `main` validates only; it does not release.
+CI rejects tags that do not match the package versions. A release is published only after checks, the arm64 build, architecture verification, and code-signature verification succeed. A failed run can be rerun from Actions; if a release already exists, publishing refuses to overwrite it. Use a new version/tag for changed binaries. Manually running the workflow on `main` validates only; it does not release.
 
 These initial alphas use ad-hoc signing (`APPLE_SIGNING_IDENTITY=-`) and are not notarized. They require no Apple secrets, but macOS may require **Privacy & Security → Open Anyway** on first launch. Developer ID signing and notarization must be configured before claiming an Apple-verified distribution. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/). Release permissions use the workflow's built-in GitHub token; no personal token is needed. Auto-update support is not included.

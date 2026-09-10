@@ -1,4 +1,4 @@
-New in alpha.5:
+New in alpha.6:
 
 - Resizable graph columns, clearer checked-out branch connectors, and a floating jump-to-top button.
 - Branch selection dims unrelated history without rearranging the graph, with automatic reveal when needed.
@@ -9,7 +9,7 @@ New in alpha.5:
 
 Early macOS alpha of Githeaven: a focused Git graph, staging and commit workspace, with an integrated file editor.
 
-- One universal build for Apple Silicon and Intel Macs.
+- Apple Silicon (arm64) Macs only.
 - Download the DMG, open it, and drag Githeaven into Applications. A ZIP of the same app is also provided.
 - Git must be installed and available on your Mac. GitHub CLI (`gh`) is optional for GitHub avatars and open pull-request links.
 - This alpha is ad-hoc signed, **not Apple-notarized**. macOS may block the first launch. After attempting to open the app, use System Settings → Privacy & Security → Open Anyway, only if you trust this download.
