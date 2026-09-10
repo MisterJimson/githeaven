@@ -2010,11 +2010,7 @@ export function App() {
                                 {changes.length}{" "}
                                 {changes.length === 1
                                   ? "file change"
-                                  : "file changes"}{" "}
-                                on{" "}
-                                <strong className="branch-badge">
-                                  {repo.branch}
-                                </strong>
+                                  : "file changes"}
                               </span>
                             </div>
                             <ChangeSections

@@ -105,11 +105,6 @@ export const BranchSidebar = memo(function BranchSidebar({
           if (scroll.current) scroll.current.scrollTop = 0;
         }}
       />
-      <div className="checked-out-branch">
-        <GitBranch size={14} />
-        <strong>{branch}</strong>
-        <span>checked out</span>
-      </div>
       <button
         className={`sidebar-link branch-all ${!branchFilter ? "active" : ""}`}
         onClick={() => onFilter("")}

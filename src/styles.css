@@ -1312,25 +1312,6 @@ kbd {
   padding: 3px 7px;
   font-size: 11px;
 }
-.checked-out-branch {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 10px;
-  min-height: 24px;
-  color: var(--mint);
-  font-size: 11px;
-}
-.checked-out-branch strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.checked-out-branch span {
-  margin-left: auto;
-  white-space: nowrap;
-  font-size: 9px;
-  color: var(--muted);
-}
 .branch-group {
   width: 100%;
 }
