@@ -1,3 +1,4 @@
+import { BranchContextMenu } from "./BranchContextMenu";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -40,6 +41,8 @@ export const History = memo(function History({
   onSelectWorking,
   onSelectRef,
   onCheckoutRef,
+  onDeleteRef,
+  busy = false,
   active = true,
   hasMore = false,
   onLoadMore,
@@ -58,10 +61,18 @@ export const History = memo(function History({
   onSelectWorking: () => void;
   onSelectRef?: (ref: Reference) => void;
   onCheckoutRef?: (ref: Reference) => void;
+  onDeleteRef?: (ref: Reference, force?: boolean) => Promise<void>;
+  busy?: boolean;
   active?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
 }) {
+  const [context, setContext] = useState<{
+    root?: string;
+    ref: Reference;
+    x: number;
+    y: number;
+  } | null>(null);
   const [widths, setWidths] = useState<Partial<Record<Column, number>>>(() => {
     const saved: Partial<Record<Column, number>> = {};
     for (const column of ["branch", "graph"] as const) {
@@ -342,6 +353,18 @@ export const History = memo(function History({
                 >
                   {commitRefs.slice(0, 2).map((ref) => (
                     <button
+                      onContextMenu={(event) => {
+                        if (!onDeleteRef || ref.kind === "tag") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!busy)
+                          setContext({
+                            root,
+                            ref,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                      }}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSelectRef?.(ref);
@@ -468,6 +491,16 @@ export const History = memo(function History({
           </div>
         )}
       </div>
+      {context && context.root === root && active && onDeleteRef && (
+        <BranchContextMenu
+          key={`${root}:${context.ref.kind}:${context.ref.name}`}
+          target={context}
+          refs={refs}
+          checkedOut={branch}
+          onClose={() => setContext(null)}
+          onDelete={onDeleteRef}
+        />
+      )}
       {active && showJumpTop && (
         <button
           className="graph-jump-top"

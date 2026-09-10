@@ -138,6 +138,7 @@ it("handles branch badges independently of commit rows", () => {
       onSelectWorking={vi.fn()}
       onSelectRef={onSelectRef}
       onCheckoutRef={onCheckoutRef}
+      onDeleteRef={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "remote origin/main" }));
@@ -146,6 +147,15 @@ it("handles branch badges independently of commit rows", () => {
   fireEvent.doubleClick(screen.getByRole("button", { name: "local main" }));
   expect(onCheckoutRef).toHaveBeenCalledWith(local);
   expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.contextMenu(
+    screen.getByRole("button", { name: "remote origin/main" }),
+    { clientX: 100, clientY: 80 },
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete branch" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(onSelectRef).toHaveBeenCalledTimes(1);
 });
 
 it("selects adjacent commits with arrows, including WIP, without scrolling the page", () => {

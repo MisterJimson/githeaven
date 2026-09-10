@@ -992,6 +992,24 @@ export function App() {
     setBranchFilter(oid);
     setDiffOpen(false);
   }, []);
+  const deleteBranch = async (ref: Reference, force = false) => {
+    if (!repo) return;
+    setBusy("Deleting branch");
+    try {
+      await call("delete_branch", {
+        root: repo.root,
+        name: ref.name,
+        kind: ref.kind,
+        oid: ref.oid,
+        force,
+      });
+      setActiveRef(null);
+      setBranchFilter("");
+    } finally {
+      await refresh(true);
+      setBusy("");
+    }
+  };
   const checkoutBranch = useCallback(
     (ref: Reference, stash = false) => {
       navigate(() => {
@@ -1592,23 +1610,7 @@ export function App() {
                             branchFilter={branchFilter}
                             onFilter={filterBranch}
                             onCheckout={checkoutBranch}
-                            onDelete={async (ref, force = false) => {
-                              setBusy("Deleting branch");
-                              try {
-                                await call("delete_branch", {
-                                  root: repo.root,
-                                  name: ref.name,
-                                  kind: ref.kind,
-                                  oid: ref.oid,
-                                  force,
-                                });
-                                setActiveRef(null);
-                                setBranchFilter("");
-                              } finally {
-                                await refresh(true);
-                                setBusy("");
-                              }
-                            }}
+                            onDelete={deleteBranch}
                             busy={!!busy}
                           />
                         ) : (
@@ -1661,6 +1663,8 @@ export function App() {
                                 setActiveRef(ref);
                               }}
                               onCheckoutRef={checkoutBranch}
+                              onDeleteRef={deleteBranch}
+                              busy={!!busy}
                               onSelect={(commit) =>
                                 navigate(() => selectCommit(commit))
                               }
