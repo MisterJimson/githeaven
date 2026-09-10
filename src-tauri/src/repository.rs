@@ -186,7 +186,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                     root,
                     &[
                         "for-each-ref",
-                        "--format=%(refname)%09%(objectname)%09%(upstream)",
+                        "--format=%(refname)%09%(objectname)%09%(upstream)%09%(symref)",
                         "refs/heads",
                         "refs/remotes",
                         "refs/tags",
@@ -245,6 +245,10 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
                         .next()
                         .and_then(|value| value.strip_prefix("refs/remotes/"))
                         .map(str::to_string);
+                    let symbolic = fields.next().unwrap_or_default();
+                    if name.starts_with("refs/remotes/") && !symbolic.is_empty() {
+                        return None;
+                    }
                     let (kind, name) = if let Some(s) = name.strip_prefix("refs/heads/") {
                         ("local", s)
                     } else if let Some(s) = name.strip_prefix("refs/remotes/") {
@@ -1066,6 +1070,28 @@ mod tests {
             .unwrap_err()
             .contains("unresolved index stages"));
     }
+    #[test]
+    fn snapshot_omits_remote_default_branch_alias() {
+        let dir = repo();
+        let r = dir.path();
+        git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        git(r, &["update-ref", "refs/remotes/origin/main", "HEAD"]).unwrap();
+        git(
+            r,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        )
+        .unwrap();
+        let result = snapshot(r, 100, true).unwrap();
+        let refs = result.refs.unwrap();
+        assert!(refs.iter().any(|r| r.name == "origin/main"));
+        assert!(!refs.iter().any(|r| r.name == "origin/HEAD"));
+        assert!(git(r, &["symbolic-ref", "refs/remotes/origin/HEAD"]).is_ok());
+    }
+
     #[test]
     fn text_preview_accepts_ten_megabytes() {
         let dir = repo();
