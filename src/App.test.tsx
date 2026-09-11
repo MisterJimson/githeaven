@@ -1550,7 +1550,7 @@ it("dims search misses without changing graph rows, lanes, selection, or scroll"
   ).toHaveLength(0);
 });
 
-it.each(["push", "pull"])(
+it.each(["push", "pull", "fetch"])(
   "runs toolbar %s once and retains the workspace during network work",
   async (operation) => {
     await openWorkspace();
@@ -1567,7 +1567,12 @@ it.each(["push", "pull"])(
     );
     fireEvent.click(
       toolbar.getByRole("button", {
-        name: operation === "push" ? "Push" : "Pull",
+        name:
+          operation === "push"
+            ? "Push"
+            : operation === "pull"
+              ? "Pull"
+              : "Fetch",
       }),
     );
     expect(call).toHaveBeenCalledWith(`${operation}_branch`, {
@@ -1581,7 +1586,11 @@ it.each(["push", "pull"])(
     expect(screen.getByRole("listbox", { name: "Commit history" })).toBe(graph);
     await act(async () => network.resolve());
     await screen.findByText(
-      operation === "push" ? "Push complete" : "Pull complete",
+      operation === "push"
+        ? "Push complete"
+        : operation === "pull"
+          ? "Pull complete"
+          : "Fetch complete",
     );
     await waitFor(() =>
       expect(

@@ -18,6 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowDownToLine,
+  Download,
   ArrowUpFromLine,
   ArrowUpRight,
   Columns2,
@@ -1200,18 +1201,18 @@ export function App() {
       return false;
     }
   }
-  async function syncRemote(operation: "push" | "pull") {
+  async function syncRemote(operation: "push" | "pull" | "fetch") {
     if (!repo || busy || stageRunning.current) return;
-    setBusy(operation === "push" ? "Pushing" : "Pulling");
+    const label =
+      operation === "push" ? "Push" : operation === "pull" ? "Pull" : "Fetch";
+    setBusy(`${label}ing`);
     setError("");
     try {
       await call(`${operation}_branch`, { root: repo.root });
-      setNotice(operation === "push" ? "Push complete" : "Pull complete");
+      setNotice(`${label} complete`);
     } catch (e) {
       if (operation !== "push" || !offerPublish(e))
-        setError(
-          `${operation === "push" ? "Push" : "Pull"} failed: ${errorText(e)}`,
-        );
+        setError(`${label} failed: ${errorText(e)}`);
     } finally {
       // A failed pull can still fetch refs or leave a merge conflict to show.
       await refresh(true);
@@ -1295,6 +1296,7 @@ export function App() {
         ["find", "Go to file…"],
         ["refresh", "Refresh repository"],
         ["new-branch", "Create new branch…"],
+        ["fetch", "Fetch all remotes"],
         ["pull", "Pull current branch"],
         ["push", "Push current branch"],
         ["split", "Toggle split / unified diff"],
@@ -1433,6 +1435,7 @@ export function App() {
           case "new-branch":
             if (!busy && !indexPending) setNewBranch(true);
             break;
+          case "fetch":
           case "pull":
           case "push":
             void syncRemote(item.value);
@@ -1548,6 +1551,19 @@ export function App() {
               >
                 <span>Branch</span>
                 <GitFork size={15} />
+              </button>
+              <button
+                className="remote-action"
+                disabled={!!busy || indexPending}
+                title="Fetch all remotes without changing your branch or working files"
+                onClick={() => void syncRemote("fetch")}
+              >
+                <span>{busy === "Fetching" ? "Fetching…" : "Fetch"}</span>
+                {busy === "Fetching" ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <Download size={15} />
+                )}
               </button>
               <button
                 className="remote-action"

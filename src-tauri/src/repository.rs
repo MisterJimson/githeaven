@@ -137,6 +137,10 @@ pub fn publish_branch(root: &Path, branch: &str, remote: &str, name: &str) -> Re
     .map(|_| ())
 }
 
+pub fn fetch(root: &Path) -> Result<(), String> {
+    git(root, &["fetch", "--all", "--no-recurse-submodules"]).map(|_| ())
+}
+
 pub fn pull(root: &Path) -> Result<(), String> {
     // Respect pull.rebase / pull.ff without opening a terminal commit editor.
     git(root, &["pull", "--no-edit"]).map(|_| ())
@@ -992,6 +996,40 @@ mod tests {
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
         );
+    }
+
+    #[test]
+    fn fetch_updates_all_remotes_without_changing_local_work() {
+        let local = repo();
+        let r = local.path();
+        git(r, &["commit", "--allow-empty", "-m", "Local"]).unwrap();
+        let first = repo();
+        let second = repo();
+        for (name, remote) in [("origin", first.path()), ("other", second.path())] {
+            git(remote, &["commit", "--allow-empty", "-m", name]).unwrap();
+            git(r, &["remote", "add", name, remote.to_str().unwrap()]).unwrap();
+        }
+        std::fs::write(r.join("file.txt"), "staged").unwrap();
+        git(r, &["add", "."]).unwrap();
+        std::fs::write(r.join("file.txt"), "unstaged").unwrap();
+        std::fs::write(r.join("new.txt"), "untracked").unwrap();
+        let head = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        let index = git(r, &["diff", "--cached"]).unwrap();
+        let status = git(r, &["status", "--porcelain=v1"]).unwrap();
+        fetch(r).unwrap();
+        assert_eq!(git_text(r, &["rev-parse", "HEAD"]).unwrap(), head);
+        assert_eq!(git(r, &["diff", "--cached"]).unwrap(), index);
+        assert_eq!(git(r, &["status", "--porcelain=v1"]).unwrap(), status);
+        assert_eq!(
+            std::fs::read_to_string(r.join("file.txt")).unwrap(),
+            "unstaged"
+        );
+        for (name, remote) in [("origin", first.path()), ("other", second.path())] {
+            assert_eq!(
+                git_text(r, &["rev-parse", &format!("{name}/main")]).unwrap(),
+                git_text(remote, &["rev-parse", "HEAD"]).unwrap()
+            );
+        }
     }
 
     #[test]
