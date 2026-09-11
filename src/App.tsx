@@ -1,3 +1,4 @@
+import { NewBranch } from "./NewBranch";
 import { CommitStats } from "./CommitStats";
 import { CommitPullRequests } from "./CommitPullRequests";
 import { CommitAvatar } from "./CommitNode";
@@ -205,6 +206,7 @@ export function App() {
   const [filter, setFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [activeRef, setActiveRef] = useState<Reference | null>(null);
+  const [newBranch, setNewBranch] = useState(false);
   const [checkoutPrompt, setCheckoutPrompt] = useState<Reference | null>(null);
   const [split, setSplit] = useState(true);
   const [staged, setStaged] = useState(false);
@@ -809,12 +811,12 @@ export function App() {
       if (key !== "k" && key !== "p") return;
       event.preventDefault();
       event.stopPropagation();
-      if (!pending && !checkoutPrompt)
+      if (!pending && !checkoutPrompt && !newBranch)
         openQuick(key === "p" ? "files" : "commands");
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [pending, checkoutPrompt]);
+  }, [pending, checkoutPrompt, newBranch]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -1268,6 +1270,7 @@ export function App() {
         ["commits", "Search commit history"],
         ["find", "Go to file…"],
         ["refresh", "Refresh repository"],
+        ["new-branch", "Create new branch…"],
         ["pull", "Pull current branch"],
         ["push", "Push current branch"],
         ["split", "Toggle split / unified diff"],
@@ -1403,6 +1406,9 @@ export function App() {
           case "refresh":
             void refresh(true);
             break;
+          case "new-branch":
+            if (!busy && !indexPending) setNewBranch(true);
+            break;
           case "pull":
           case "push":
             void syncRemote(item.value);
@@ -1508,8 +1514,17 @@ export function App() {
             <div
               className="remote-actions"
               role="group"
-              aria-label="Sync repository"
+              aria-label="Repository actions"
             >
+              <button
+                className="remote-action"
+                disabled={!!busy || indexPending}
+                title="Create a branch from the current checkout"
+                onClick={() => setNewBranch(true)}
+              >
+                <span>Branch</span>
+                <GitFork size={15} />
+              </button>
               <button
                 className="remote-action"
                 disabled={!!busy || indexPending}
@@ -2511,6 +2526,25 @@ export function App() {
             Reset samples
           </button>
         </div>
+      )}
+      {newBranch && repo && (
+        <NewBranch
+          branch={repo.branch}
+          onClose={() => setNewBranch(false)}
+          onCreate={async (name) => {
+            setBusy("Creating branch");
+            try {
+              await stageCompletion.current;
+              await call("create_branch", { root: repo.root, name });
+              setBranchFilter("");
+              setActiveRef(null);
+              await refresh(true);
+              setNotice(`Checked out ${name}`);
+            } finally {
+              setBusy("");
+            }
+          }}
+        />
       )}
       {checkoutPrompt && (
         <div className="modal-backdrop">

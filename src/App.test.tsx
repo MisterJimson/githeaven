@@ -1563,7 +1563,7 @@ it.each(["push", "pull"])(
     });
     const graph = screen.getByRole("listbox", { name: "Commit history" });
     const toolbar = within(
-      screen.getByRole("group", { name: "Sync repository" }),
+      screen.getByRole("group", { name: "Repository actions" }),
     );
     fireEvent.click(
       toolbar.getByRole("button", {

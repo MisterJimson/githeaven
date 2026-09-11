@@ -722,6 +722,15 @@ pub fn stage_all(root: &Path, unstage: bool) -> Result<(), String> {
     Ok(())
 }
 
+pub fn create_branch(root: &Path, name: &str) -> Result<(), String> {
+    if name.is_empty() || name.starts_with('-') || name.trim() != name {
+        return Err("Enter a valid branch name.".into());
+    }
+    git(root, &["check-ref-format", &format!("refs/heads/{name}")])?;
+    // Starting at HEAD preserves both the index and working tree, without a stash.
+    git(root, &["switch", "-c", name]).map(|_| ())
+}
+
 pub fn delete_branch(
     root: &Path,
     name: &str,
@@ -952,6 +961,32 @@ mod tests {
         assert_eq!(
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn new_branch_preserves_work_and_rejects_duplicates() {
+        let dir = repo();
+        let r = dir.path();
+        git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        create_branch(r, "clean").unwrap();
+        std::fs::write(r.join("staged.txt"), "staged\n").unwrap();
+        git(r, &["add", "."]).unwrap();
+        std::fs::write(r.join("staged.txt"), "unstaged\n").unwrap();
+        std::fs::write(r.join("untracked.txt"), "new\n").unwrap();
+        let before = git(r, &["status", "--porcelain=v1", "-z"]).unwrap();
+        create_branch(r, "feature/new").unwrap();
+        assert_eq!(
+            git_text(r, &["branch", "--show-current"]).unwrap().trim(),
+            "feature/new"
+        );
+        assert_eq!(git(r, &["status", "--porcelain=v1", "-z"]).unwrap(), before);
+        assert!(create_branch(r, "clean").is_err());
+        assert!(create_branch(r, "bad name").is_err());
+        assert!(create_branch(r, "-oops").is_err());
+        assert_eq!(
+            git_text(r, &["branch", "--show-current"]).unwrap().trim(),
+            "feature/new"
         );
     }
 

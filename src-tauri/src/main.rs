@@ -368,6 +368,22 @@ async fn stage_all_changes(
 }
 
 #[tauri::command]
+async fn create_branch(
+    root: String,
+    name: String,
+    state: State<'_, Session>,
+) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let lock = state.writes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        repository::create_branch(&root, &name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn checkout_branch(
     root: String,
     name: String,
@@ -500,6 +516,7 @@ fn main() {
             stage_file,
             stage_all_changes,
             checkout_branch,
+            create_branch,
             create_commit,
             push_branch,
             delete_branch,

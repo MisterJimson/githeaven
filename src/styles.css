@@ -1900,3 +1900,13 @@ kbd {
 .change-blocks .neutral {
   color: var(--border);
 }
+
+.modal label:has(input[aria-label="Branch name"]) {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.modal input[aria-label="Branch name"] {
+  width: 100%;
+  padding: 10px 12px;
+}
