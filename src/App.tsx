@@ -1,3 +1,4 @@
+import { PublishBranch, type PublishTarget } from "./PublishBranch";
 import { NewBranch } from "./NewBranch";
 import { CommitStats } from "./CommitStats";
 import { CommitPullRequests } from "./CommitPullRequests";
@@ -206,6 +207,9 @@ export function App() {
   const [filter, setFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [activeRef, setActiveRef] = useState<Reference | null>(null);
+  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(
+    null,
+  );
   const [newBranch, setNewBranch] = useState(false);
   const [checkoutPrompt, setCheckoutPrompt] = useState<Reference | null>(null);
   const [split, setSplit] = useState(true);
@@ -811,12 +815,12 @@ export function App() {
       if (key !== "k" && key !== "p") return;
       event.preventDefault();
       event.stopPropagation();
-      if (!pending && !checkoutPrompt && !newBranch)
+      if (!pending && !checkoutPrompt && !newBranch && !publishTarget)
         openQuick(key === "p" ? "files" : "commands");
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [pending, checkoutPrompt, newBranch]);
+  }, [pending, checkoutPrompt, newBranch, publishTarget]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -1180,6 +1184,22 @@ export function App() {
     if (viewed)
       enqueueStage({ path: viewed.path, unstage: viewed.source === "index" });
   }
+  function offerPublish(error: unknown) {
+    const text = errorText(error);
+    if (!repo || !text.startsWith("PUBLISH_BRANCH:")) return false;
+    try {
+      const target = JSON.parse(text.slice("PUBLISH_BRANCH:".length));
+      setPublishTarget({
+        root: repo.root,
+        branch: target.branch,
+        remotes: target.remotes,
+      });
+      setError("");
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async function syncRemote(operation: "push" | "pull") {
     if (!repo || busy || stageRunning.current) return;
     setBusy(operation === "push" ? "Pushing" : "Pulling");
@@ -1188,9 +1208,10 @@ export function App() {
       await call(`${operation}_branch`, { root: repo.root });
       setNotice(operation === "push" ? "Push complete" : "Pull complete");
     } catch (e) {
-      setError(
-        `${operation === "push" ? "Push" : "Pull"} failed: ${errorText(e)}`,
-      );
+      if (operation !== "push" || !offerPublish(e))
+        setError(
+          `${operation === "push" ? "Push" : "Pull"} failed: ${errorText(e)}`,
+        );
     } finally {
       // A failed pull can still fetch refs or leave a merge conflict to show.
       await refresh(true);
@@ -1222,7 +1243,10 @@ export function App() {
           setNotice("Commit created and pushed");
           await refresh(true);
         } catch (e) {
-          setError(`Commit created locally, but push failed: ${errorText(e)}`);
+          if (!offerPublish(e))
+            setError(
+              `Commit created locally, but push failed: ${errorText(e)}`,
+            );
         }
       }
     } catch (e) {
@@ -2526,6 +2550,27 @@ export function App() {
             Reset samples
           </button>
         </div>
+      )}
+      {publishTarget && (
+        <PublishBranch
+          target={publishTarget}
+          onClose={() => setPublishTarget(null)}
+          onPublish={async (remote, name) => {
+            setBusy("Pushing");
+            try {
+              await call("publish_branch", {
+                root: publishTarget.root,
+                branch: publishTarget.branch,
+                remote,
+                name,
+              });
+              setNotice("Branch published");
+              await refresh(true);
+            } finally {
+              setBusy("");
+            }
+          }}
+        />
       )}
       {newBranch && repo && (
         <NewBranch

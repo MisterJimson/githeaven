@@ -1910,3 +1910,14 @@ kbd {
   width: 100%;
   padding: 10px 12px;
 }
+.publish-branch label {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.publish-branch input,
+.publish-branch select {
+  width: 100%;
+  padding: 10px 12px;
+}

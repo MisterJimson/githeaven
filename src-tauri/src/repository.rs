@@ -105,8 +105,38 @@ pub fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
 pub fn push(root: &Path) -> Result<(), String> {
     // Honor the repository's configured remote/upstream and credential helpers.
     // Never force a push or silently choose a remote for a new branch.
-    git(root, &["push"]).map(|_| ())
+    git(root, &["push"]).map(|_| ()).map_err(|error| {
+        if error.contains("has no upstream branch") {
+            let branch = git_text(root, &["branch", "--show-current"]).unwrap_or_default();
+            let remotes = git_text(root, &["remote"]).unwrap_or_default();
+            format!("PUBLISH_BRANCH:{}", serde_json::json!({"branch": branch.trim(), "remotes": remotes.lines().collect::<Vec<_>>() }))
+        } else { error }
+    })
 }
+pub fn publish_branch(root: &Path, branch: &str, remote: &str, name: &str) -> Result<(), String> {
+    if git_text(root, &["branch", "--show-current"])?.trim() != branch {
+        return Err("The checked-out branch changed. Close this dialog and push again.".into());
+    }
+    if !git_text(root, &["remote"])?
+        .lines()
+        .any(|value| value == remote)
+    {
+        return Err("Choose a configured remote.".into());
+    }
+    git(root, &["check-ref-format", &format!("refs/heads/{name}")])?;
+    git(
+        root,
+        &[
+            "push",
+            "--set-upstream",
+            "--",
+            remote,
+            &format!("refs/heads/{branch}:refs/heads/{name}"),
+        ],
+    )
+    .map(|_| ())
+}
+
 pub fn pull(root: &Path) -> Result<(), String> {
     // Respect pull.rebase / pull.ff without opening a terminal commit editor.
     git(root, &["pull", "--no-edit"]).map(|_| ())
@@ -962,6 +992,34 @@ mod tests {
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
         );
+    }
+
+    #[test]
+    fn publishes_new_branch_and_sets_upstream() {
+        let dir = repo();
+        let r = dir.path();
+        let remote = repo();
+        git(
+            remote.path(),
+            &["config", "receive.denyCurrentBranch", "ignore"],
+        )
+        .unwrap();
+        git(r, &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        git(
+            r,
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .unwrap();
+        create_branch(r, "feature/publish").unwrap();
+        assert!(push(r).unwrap_err().starts_with("PUBLISH_BRANCH:"));
+        publish_branch(r, "feature/publish", "origin", "feature/publish").unwrap();
+        assert_eq!(
+            git_text(r, &["rev-parse", "--abbrev-ref", "@{upstream}"])
+                .unwrap()
+                .trim(),
+            "origin/feature/publish"
+        );
+        assert!(publish_branch(r, "main", "origin", "wrong").is_err());
     }
 
     #[test]

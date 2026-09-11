@@ -1684,3 +1684,38 @@ it("keeps one inspector avatar when arrowing repeatedly between commits", async 
       ?.getAttribute("aria-label"),
   ).toContain("Author 7");
 });
+
+it("offers publishing a branch without an upstream instead of displaying the Git error", async () => {
+  await openWorkspace();
+  const snapshot = await vi.mocked(call).mock.results[0].value;
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "push_branch")
+      throw 'PUBLISH_BRANCH:{"branch":"feature/new","remotes":["origin"]}';
+    if (command === "publish_branch") return;
+    if (command === "refresh_repository") return snapshot;
+    throw new Error(command);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Push" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(
+    (within(dialog).getByLabelText("Remote branch name") as HTMLInputElement)
+      .value,
+  ).toBe("feature/new");
+  expect(call).not.toHaveBeenCalledWith("publish_branch", expect.anything());
+  await waitFor(() =>
+    expect(
+      within(dialog)
+        .getByRole("button", { name: "Publish branch" })
+        .hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  fireEvent.submit(dialog);
+  await waitFor(() =>
+    expect(call).toHaveBeenCalledWith("publish_branch", {
+      root: "/sample",
+      branch: "feature/new",
+      remote: "origin",
+      name: "feature/new",
+    }),
+  );
+});
