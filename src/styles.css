@@ -1921,3 +1921,16 @@ kbd {
   width: 100%;
   padding: 10px 12px;
 }
+.discard-backdrop {
+  z-index: 1000;
+}
+.discard-paths {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 18px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.change-file-views {
+  user-select: none;
+}

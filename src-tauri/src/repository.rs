@@ -747,6 +747,76 @@ pub fn stage(root: &Path, path: &str, unstage: bool) -> Result<(), String> {
     git(root, &args).map(|_| ())
 }
 
+pub fn discard_files(root: &Path, paths: &[String]) -> Result<(), String> {
+    let changes = parse_status(git(
+        root,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?)?;
+    let mut selected = std::collections::BTreeSet::new();
+    for path in paths {
+        let change = changes
+            .iter()
+            .find(|c| &c.path == path)
+            .ok_or("A selected file is no longer changed. Refresh and try again.")?;
+        selected.insert(change.path.clone());
+        if let Some(original) = &change.original_path {
+            selected.insert(original.clone());
+        }
+    }
+    let has_head = git(root, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    let mut restore = Vec::new();
+    let mut remove = Vec::new();
+    for path in &selected {
+        let full = safe_path(root, path)?;
+        if full.is_dir() {
+            return Err("Discarding directories or submodules is not supported.".into());
+        }
+        let tracked = has_head
+            && !git(
+                root,
+                &["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", path],
+            )?
+            .is_empty();
+        if tracked {
+            restore.push(path.as_str());
+        } else {
+            remove.push((path.as_str(), full));
+        }
+    }
+    if !restore.is_empty() {
+        let mut args = vec![
+            "--literal-pathspecs",
+            "restore",
+            "--source=HEAD",
+            "--staged",
+            "--worktree",
+            "--",
+        ];
+        args.extend(restore);
+        git(root, &args)?;
+    }
+    for (path, full) in remove {
+        git(
+            root,
+            &[
+                "--literal-pathspecs",
+                "rm",
+                "--cached",
+                "-f",
+                "--ignore-unmatch",
+                "--",
+                path,
+            ],
+        )?;
+        match fs::remove_file(full) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
 pub fn stage_all(root: &Path, unstage: bool) -> Result<(), String> {
     if !unstage {
         git(root, &["add", "-A", "--", "."])?;
@@ -996,6 +1066,30 @@ mod tests {
             git_text(remote.path(), &["rev-parse", "main"]).unwrap(),
             git_text(other.path(), &["rev-parse", "HEAD"]).unwrap()
         );
+    }
+
+    #[test]
+    fn discard_restores_tracked_and_removes_new_files_only() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("tracked"), "original").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        fs::write(r.join("tracked"), "staged").unwrap();
+        fs::write(r.join("added"), "new").unwrap();
+        git(r, &["add", "."]).unwrap();
+        fs::write(r.join("tracked"), "unstaged").unwrap();
+        fs::write(r.join("untracked"), "new").unwrap();
+        fs::write(r.join("keep"), "keep").unwrap();
+        discard_files(r, &["tracked".into(), "added".into(), "untracked".into()]).unwrap();
+        assert_eq!(fs::read_to_string(r.join("tracked")).unwrap(), "original");
+        assert!(!r.join("added").exists());
+        assert!(!r.join("untracked").exists());
+        assert_eq!(
+            git_text(r, &["status", "--porcelain"]).unwrap(),
+            "?? keep\n"
+        );
+        assert!(discard_files(r, &["../outside".into()]).is_err());
     }
 
     #[test]

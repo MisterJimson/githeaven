@@ -15,6 +15,7 @@ export function ChangePaths({
   staged,
   label,
   selected,
+  selectedPaths,
   onSelect,
   revealPath,
 }: {
@@ -23,6 +24,7 @@ export function ChangePaths({
   staged: boolean;
   label?: string;
   selected?: string;
+  selectedPaths?: string[];
   revealPath?: string;
   onSelect: (path: string) => void;
 }) {
@@ -76,7 +78,10 @@ export function ChangePaths({
               className="change-path-row"
               aria-label={path}
               title={path}
-              aria-pressed={selected === path}
+              aria-pressed={
+                selectedPaths ? selectedPaths.includes(path) : selected === path
+              }
+              data-item-path={path}
               data-status={status}
               onClick={() => onSelect(path)}
               style={{

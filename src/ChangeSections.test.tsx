@@ -26,7 +26,7 @@ vi.mock("./PierreTree", () => ({
   }) => (
     <div data-testid="tree" data-query={query} data-search={String(search)}>
       {paths.map((path) => (
-        <button key={path} onClick={() => onSelect(path)}>
+        <button key={path} data-item-path={path} onClick={() => onSelect(path)}>
           {path}
         </button>
       ))}
@@ -220,3 +220,44 @@ it("preserves commit file selection across layouts and opens files with arrows",
   expect(onSelect).toHaveBeenLastCalledWith("a.ts");
   expect(screen.queryByRole("searchbox")).toBeNull();
 });
+
+it.each(["path", "tree"] as const)(
+  "discards a confirmed range in %s view using Shift-click and Shift-arrow",
+  async (view) => {
+    const discard = vi.fn().mockResolvedValue(undefined);
+    function Harness() {
+      const [selected, setSelected] = useState<string>();
+      return (
+        <ChangeFiles
+          paths={["a.ts", "b.ts", "c.ts"]}
+          changes={[]}
+          staged={false}
+          view={view}
+          selected={selected}
+          onSelect={setSelected}
+          onDiscard={discard}
+        />
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "a.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "b.ts" }), {
+      shiftKey: true,
+    });
+    fireEvent.keyDown(screen.getByLabelText("Unstaged file navigation"), {
+      key: "ArrowDown",
+      shiftKey: true,
+    });
+    fireEvent.contextMenu(screen.getByRole("button", { name: "b.ts" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Discard changes to 3 files…" }),
+    );
+    expect(discard).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Discard changes",
+      }),
+    );
+    expect(discard).toHaveBeenCalledWith(["a.ts", "b.ts", "c.ts"]);
+  },
+);

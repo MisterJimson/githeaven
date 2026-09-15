@@ -352,6 +352,22 @@ async fn stage_file(
 }
 
 #[tauri::command]
+async fn discard_files(
+    root: String,
+    paths: Vec<String>,
+    state: State<'_, Session>,
+) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let lock = state.writes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        repository::discard_files(&root, &paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn stage_all_changes(
     root: String,
     unstage: bool,
@@ -545,6 +561,7 @@ fn main() {
             save_file,
             stage_file,
             stage_all_changes,
+            discard_files,
             checkout_branch,
             create_branch,
             create_commit,

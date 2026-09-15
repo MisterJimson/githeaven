@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { DiscardMenu } from "./DiscardMenu";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, List, ListTree } from "lucide-react";
 import { PierreTree } from "./PierreTree";
 import { ChangePaths } from "./ChangePaths";
@@ -8,12 +9,14 @@ export function ChangeSections({
   changes,
   onSelect,
   onStageAll,
+  onDiscard,
   busy = false,
   selectionActive = true,
   selected,
 }: {
   changes: Change[];
   onSelect: (path: string, staged: boolean) => void;
+  onDiscard?: (paths: string[]) => Promise<void>;
   onStageAll?: (unstage: boolean) => void;
   busy?: boolean;
   selectionActive?: boolean;
@@ -102,6 +105,8 @@ export function ChangeSections({
             {section.paths.length ? (
               <ChangeFiles
                 paths={section.paths}
+                onDiscard={onDiscard}
+                busy={busy}
                 changes={changes}
                 staged={section.staged}
                 view={view}
@@ -133,7 +138,11 @@ export function ChangeFiles({
   view,
   selected,
   onSelect,
+  onDiscard,
+  busy = false,
 }: {
+  onDiscard?: (paths: string[]) => Promise<void>;
+  busy?: boolean;
   paths: string[];
   changes: Change[];
   staged: boolean;
@@ -142,6 +151,44 @@ export function ChangeFiles({
   selected?: string;
   onSelect: (path: string) => void;
 }) {
+  const [multiple, setMultiple] = useState<string[]>([]);
+  const anchor = useRef<string | undefined>(undefined);
+  const [menu, setMenu] = useState<{
+    paths: string[];
+    x: number;
+    y: number;
+  } | null>(null);
+  const highlighted =
+    multiple.length && selected && multiple.includes(selected)
+      ? multiple.filter((path) => paths.includes(path))
+      : selected
+        ? [selected]
+        : [];
+  function eventPath(event: { nativeEvent: Event }) {
+    for (const item of event.nativeEvent.composedPath()) {
+      if (item instanceof HTMLElement) {
+        const path = item.getAttribute("data-item-path");
+        if (path && filtered.includes(path)) return path;
+      }
+    }
+  }
+  function select(path: string, extend = false) {
+    const base = anchor.current ?? selected ?? path;
+    if (extend && onDiscard) {
+      const from = filtered.indexOf(base),
+        to = filtered.indexOf(path);
+      setMultiple(
+        from < 0
+          ? [path]
+          : filtered.slice(Math.min(from, to), Math.max(from, to) + 1),
+      );
+      anchor.current = base;
+    } else {
+      setMultiple([path]);
+      anchor.current = path;
+    }
+    onSelect(path);
+  }
   const [query, setQuery] = useState("");
   const [keyboardPath, setKeyboardPath] = useState<string>();
   const searchable = paths.length > 20;
@@ -160,6 +207,14 @@ export function ChangeFiles({
   );
   return (
     <div className="change-files">
+      {menu && onDiscard && (
+        <DiscardMenu
+          {...menu}
+          disabled={busy}
+          onDiscard={onDiscard}
+          onClose={() => setMenu(null)}
+        />
+      )}
       {searchable && (
         <input
           type="search"
@@ -174,13 +229,37 @@ export function ChangeFiles({
         className="change-file-views"
         tabIndex={0}
         aria-label={`${label ?? (staged ? "Staged" : "Unstaged")} file navigation`}
-        onPointerDownCapture={() => setKeyboardPath(undefined)}
+        onPointerDownCapture={(event) => {
+          setKeyboardPath(undefined);
+          if (onDiscard && eventPath(event)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        onClickCapture={(event) => {
+          if (!onDiscard) return;
+          const path = eventPath(event);
+          if (!path) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.currentTarget.focus({ preventScroll: true });
+          select(path, event.shiftKey);
+        }}
+        onContextMenuCapture={(event) => {
+          if (!onDiscard) return;
+          const path = eventPath(event);
+          if (!path) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const targets = highlighted.includes(path) ? highlighted : [path];
+          if (!highlighted.includes(path)) select(path);
+          setMenu({ paths: targets, x: event.clientX, y: event.clientY });
+        }}
         onKeyDownCapture={(event) => {
           if (
             event.altKey ||
             event.ctrlKey ||
             event.metaKey ||
-            event.shiftKey ||
             (event.key !== "ArrowDown" && event.key !== "ArrowUp")
           )
             return;
@@ -203,7 +282,7 @@ export function ChangeFiles({
           const path = filtered[index];
           event.currentTarget.focus({ preventScroll: true });
           setKeyboardPath(path);
-          onSelect(path);
+          select(path, event.shiftKey);
         }}
       >
         <div
@@ -223,7 +302,8 @@ export function ChangeFiles({
             staged={staged}
             label={label}
             selected={selected}
-            onSelect={onSelect}
+            selectedPaths={onDiscard ? highlighted : undefined}
+            onSelect={select}
           />
           {!filtered.length && (
             <p className="change-section-empty">No matching files</p>
@@ -242,7 +322,8 @@ export function ChangeFiles({
           <PierreTree
             paths={paths}
             changes={changes}
-            onSelect={onSelect}
+            onSelect={select}
+            selectedPaths={onDiscard ? highlighted : undefined}
             search={false}
             query={effectiveQuery}
             selected={selected}

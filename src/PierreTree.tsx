@@ -10,6 +10,7 @@ export function PierreTree({
   changes = noChanges,
   onSelect,
   selected,
+  selectedPaths,
   selectionActive = true,
   search = true,
   query,
@@ -22,6 +23,7 @@ export function PierreTree({
   changes?: Change[];
   onSelect: (path: string) => void;
   selected?: string;
+  selectedPaths?: string[];
   selectionActive?: boolean;
   search?: boolean;
   query?: string;
@@ -74,16 +76,19 @@ export function PierreTree({
     if (!syncSelection) return;
     synchronizing.current = true;
     try {
-      const target = selectionActive ? selected : undefined;
+      const targets = selectionActive
+        ? (selectedPaths ?? (selected ? [selected] : []))
+        : [];
       for (const path of model.getSelectedPaths()) {
-        if (path !== target) model.getItem(path)?.deselect();
+        if (!targets.includes(path)) model.getItem(path)?.deselect();
       }
-      if (target && !model.getSelectedPaths().includes(target))
-        model.getItem(target)?.select();
+      for (const target of targets)
+        if (!model.getSelectedPaths().includes(target))
+          model.getItem(target)?.select();
     } finally {
       synchronizing.current = false;
     }
-  }, [model, selected, selectionActive, syncSelection, paths]);
+  }, [model, selected, selectedPaths, selectionActive, syncSelection, paths]);
   useEffect(() => {
     // The graph has no active file. Clear only the highlight so clicking the same
     // file opens it again; keep expansion, scrolling, and the model intact.

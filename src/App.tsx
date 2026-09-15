@@ -2074,7 +2074,30 @@ export function App() {
                               </span>
                             </div>
                             <ChangeSections
+                              key={repo.root}
                               changes={changes}
+                              onDiscard={async (paths) => {
+                                if (
+                                  busy ||
+                                  dirtyRef.current ||
+                                  stageRunning.current
+                                )
+                                  throw new Error(
+                                    "Finish the current operation or save your editor changes first.",
+                                  );
+                                setBusy("Discarding changes");
+                                try {
+                                  await call("discard_files", {
+                                    root: repo.root,
+                                    paths,
+                                  });
+                                  setChangeSelection(null);
+                                  setDiffOpen(false);
+                                } finally {
+                                  await refresh(true);
+                                  setBusy("");
+                                }
+                              }}
                               selected={changeSelection}
                               onSelect={(path, staged) =>
                                 navigate(() => chooseChange(path, staged))
