@@ -925,7 +925,7 @@ pub fn checkout_with_stash(root: &Path, name: &str, kind: &str, stash: bool) -> 
             return Err(format!("Local branch {local} already exists and tracks a different branch. Choose it explicitly."));
         }
     }
-    if git_text(root, &["branch", "--show-current"])?.trim() == local {
+    if kind == "local" && git_text(root, &["branch", "--show-current"])?.trim() == local {
         return Ok(());
     }
     let dirty = !git_text(root, &["status", "--porcelain", "--untracked-files=normal"])?.is_empty();
@@ -950,11 +950,34 @@ pub fn checkout_with_stash(root: &Path, name: &str, kind: &str, stash: bool) -> 
             );
         }
     }
+    if kind == "remote" {
+        let (remote, branch) = name.split_once('/').ok_or("Invalid remote branch.")?;
+        git(
+            root,
+            &[
+                "fetch",
+                "--no-recurse-submodules",
+                "--",
+                remote,
+                &format!("+refs/heads/{branch}:{full}"),
+            ],
+        )?;
+    }
     let result = if kind == "remote" && !exists {
         git(root, &["switch", "--track", "-c", local, "--", &full])
     } else {
         git(root, &["switch", "--no-guess", "--", local])
     };
+    let result = result.and_then(|_| {
+        if kind != "remote" { return Ok(Vec::new()); }
+        let head = git_text(root, &["rev-parse", "HEAD"])?;
+        let target = git_text(root, &["rev-parse", &full])?;
+        if head == target { return Ok(Vec::new()); }
+        if git(root, &["merge-base", "--is-ancestor", "HEAD", &full]).is_err() {
+            return Err(format!("Switched to {local}, but it has local commits not in {name}. Your commits were preserved. Merge or rebase the remote changes before synchronizing; no reset was performed."));
+        }
+        git(root, &["merge", "--ff-only", &full])
+    });
     result.map(|_| ()).map_err(|error| {
         if dirty {
             format!("{error} Your changes remain saved in the Git stash.")
@@ -1521,6 +1544,16 @@ mod tests {
             &["update-ref", "refs/remotes/origin/new-feature", "feature"],
         )
         .unwrap();
+        git(r, &["branch", "new-feature", "feature"]).unwrap();
+        git(
+            r,
+            &[
+                "branch",
+                "--set-upstream-to=origin/new-feature",
+                "new-feature",
+            ],
+        )
+        .unwrap();
         checkout(r, "origin/new-feature", "remote").unwrap();
         assert_eq!(
             git_text(r, &["branch", "--show-current"]).unwrap().trim(),
@@ -1529,6 +1562,42 @@ mod tests {
         checkout(r, "origin/new-feature", "remote").unwrap();
         assert!(checkout(r, "--force", "local").is_err());
     }
+    #[test]
+    fn remote_checkout_fast_forwards_existing_branch_and_preserves_divergence() {
+        let remote = repo();
+        let local = repo();
+        let r = local.path();
+        git(remote.path(), &["commit", "--allow-empty", "-m", "Base"]).unwrap();
+        git(
+            r,
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        )
+        .unwrap();
+        fetch(r).unwrap();
+        git(r, &["checkout", "-B", "main", "origin/main"]).unwrap();
+        git(
+            remote.path(),
+            &["commit", "--allow-empty", "-m", "New remote"],
+        )
+        .unwrap();
+        checkout(r, "origin/main", "remote").unwrap();
+        assert_eq!(
+            git_text(r, &["rev-parse", "HEAD"]).unwrap(),
+            git_text(remote.path(), &["rev-parse", "HEAD"]).unwrap()
+        );
+        git(r, &["commit", "--allow-empty", "-m", "Local"]).unwrap();
+        let head = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        git(
+            remote.path(),
+            &["commit", "--allow-empty", "-m", "Diverged"],
+        )
+        .unwrap();
+        assert!(checkout(r, "origin/main", "remote")
+            .unwrap_err()
+            .contains("local commits"));
+        assert_eq!(git_text(r, &["rev-parse", "HEAD"]).unwrap(), head);
+    }
+
     #[test]
     fn stash_checkout_requires_consent_and_preserves_index_and_untracked_files() {
         let dir = repo();

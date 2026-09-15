@@ -1042,7 +1042,10 @@ export function App() {
           } catch (error) {
             if (errorText(error).includes("WIP_STASH_REQUIRED"))
               setCheckoutPrompt(ref);
-            else report(error);
+            else {
+              await refresh(true);
+              report(error);
+            }
           } finally {
             setBusy("");
           }
