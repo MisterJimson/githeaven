@@ -1,16 +1,20 @@
+import { StashMenu } from "./StashMenu";
 import { BranchContextMenu } from "./BranchContextMenu";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import { Layers, ChevronDown, GitBranch, Check } from "lucide-react";
-import type { Reference } from "./types";
+import type { Reference, Stash } from "./types";
 
 type Row =
   | { type: "header"; key: string; title: string; count: number }
+  | { type: "stash"; key: string; stash: Stash }
   | { type: "ref"; key: string; ref: Reference }
   | { type: "empty"; key: string; title: string };
 
 export const BranchSidebar = memo(function BranchSidebar({
   refs,
+  stashes = [],
+  onStashAction,
   commitCount,
   branch,
   branchFilter,
@@ -21,6 +25,11 @@ export const BranchSidebar = memo(function BranchSidebar({
   activeRef,
 }: {
   refs: Reference[];
+  stashes?: Stash[];
+  onStashAction?: (
+    stash: Stash,
+    action: "apply" | "pop" | "delete",
+  ) => Promise<void>;
   commitCount: number;
   branch: string;
   branchFilter: string;
@@ -35,6 +44,12 @@ export const BranchSidebar = memo(function BranchSidebar({
     x: number;
     y: number;
   } | null>(null);
+  const [stashMenu, setStashMenu] = useState<{
+    stash: Stash;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
   const scroll = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -73,10 +88,38 @@ export const BranchSidebar = memo(function BranchSidebar({
           title: kind === "tag" ? "No tags" : "No branches",
         });
     }
+    const visibleStashes = stashes.filter((stash) =>
+      `${stash.name} ${stash.message}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    );
+    rows.push({
+      type: "header",
+      key: "stashes",
+      title: "STASHES",
+      count: visibleStashes.length,
+    });
+    if (!collapsed.stashes) {
+      for (const stash of visibleStashes)
+        rows.push({
+          type: "stash",
+          key: `stash:${stash.oid}:${stash.name}`,
+          stash,
+        });
+      if (!visibleStashes.length)
+        rows.push({ type: "empty", key: "stashes:empty", title: "No stashes" });
+    }
     return rows;
-  }, [refs, query, collapsed]);
+  }, [refs, stashes, query, collapsed]);
+  const headers = rows.flatMap((row, index) =>
+    row.type === "header" ? [index] : [],
+  );
   const virtual = useVirtualizer({
     count: rows.length,
+    rangeExtractor: (range) =>
+      [...new Set([...headers, ...defaultRangeExtractor(range)])].sort(
+        (a, b) => a - b,
+      ),
     getScrollElement: () => scroll.current,
     getItemKey: (index) => rows[index].key,
     estimateSize: (index) => (rows[index].type === "header" ? 26 : 22),
@@ -115,6 +158,7 @@ export const BranchSidebar = memo(function BranchSidebar({
       <div
         className="branch-scroll"
         ref={scroll}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         aria-label="Branches and tags"
       >
         <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
@@ -125,7 +169,16 @@ export const BranchSidebar = memo(function BranchSidebar({
                 key={row.key}
                 style={{
                   position: "absolute",
-                  top: item.start,
+                  top:
+                    row.type === "header"
+                      ? Math.max(
+                          item.start,
+                          scrollTop + headers.indexOf(item.index) * 26,
+                        )
+                      : item.start,
+                  zIndex: row.type === "header" ? 2 : undefined,
+                  background:
+                    row.type === "header" ? "var(--panel)" : undefined,
                   height: item.size,
                   width: "100%",
                 }}
@@ -154,6 +207,25 @@ export const BranchSidebar = memo(function BranchSidebar({
                       {row.title}
                     </span>
                     <span>{row.count}</span>
+                  </button>
+                ) : row.type === "stash" ? (
+                  <button
+                    className="branch-row"
+                    title={`${row.stash.name}: ${row.stash.message}`}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (!busy && onStashAction)
+                        setStashMenu({
+                          stash: row.stash,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                    }}
+                  >
+                    <Layers size={13} />
+                    <span>
+                      {row.stash.name}: {row.stash.message}
+                    </span>
                   </button>
                 ) : row.type === "empty" ? (
                   <span className="no-refs">{row.title}</span>
@@ -188,6 +260,13 @@ export const BranchSidebar = memo(function BranchSidebar({
           })}
         </div>
       </div>
+      {stashMenu && onStashAction && (
+        <StashMenu
+          {...stashMenu}
+          onAction={onStashAction}
+          onClose={() => setStashMenu(null)}
+        />
+      )}
       {context && onDelete && (
         <BranchContextMenu
           key={`${context.ref.kind}:${context.ref.name}`}

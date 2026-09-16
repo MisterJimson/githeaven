@@ -1664,6 +1664,33 @@ export function App() {
                             key={repo.root}
                             activeRef={activeRef}
                             refs={repo.refs ?? []}
+                            stashes={repo.stashes}
+                            onStashAction={async (stash, action) => {
+                              if (
+                                busy ||
+                                dirtyRef.current ||
+                                stageRunning.current
+                              )
+                                throw new Error(
+                                  "Finish the current operation or save your editor changes first.",
+                                );
+                              setBusy(
+                                action === "delete"
+                                  ? "Deleting stash"
+                                  : "Applying stash",
+                              );
+                              try {
+                                await call("stash_action", {
+                                  root: repo.root,
+                                  oid: stash.oid,
+                                  action,
+                                });
+                                if (action !== "delete") showWorking();
+                              } finally {
+                                await refresh(true);
+                                setBusy("");
+                              }
+                            }}
                             commitCount={repo.commits?.length ?? 0}
                             branch={repo.branch}
                             branchFilter={branchFilter}

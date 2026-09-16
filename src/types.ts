@@ -1,3 +1,8 @@
+export interface Stash {
+  oid: string;
+  name: string;
+  message: string;
+}
 export interface Commit {
   oid: string;
   parents: string[];
@@ -20,6 +25,7 @@ export interface Change {
   worktree: string;
 }
 export interface Snapshot {
+  stashes?: Stash[];
   root: string;
   name: string;
   branch: string;

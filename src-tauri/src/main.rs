@@ -418,6 +418,23 @@ async fn checkout_branch(
 }
 
 #[tauri::command]
+async fn stash_action(
+    root: String,
+    oid: String,
+    action: String,
+    state: State<'_, Session>,
+) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let lock = state.writes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock.lock().map_err(|e| e.to_string())?;
+        repository::stash_action(&root, &oid, &action)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn fetch_branch(root: String, state: State<'_, Session>) -> Result<(), String> {
     let root = state.checked(&root)?;
     let lock = state.writes.clone();
@@ -567,6 +584,7 @@ fn main() {
             create_commit,
             push_branch,
             fetch_branch,
+            stash_action,
             publish_branch,
             delete_branch,
             pull_branch

@@ -101,3 +101,64 @@ it("opens delete as the first context action without selecting the branch", () =
   fireEvent.keyDown(document, { key: "Escape" });
   expect(screen.queryByRole("menu")).toBeNull();
 });
+
+it("keeps section headers mounted and pins them while scrolling", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(223);
+  render(
+    <BranchSidebar
+      refs={Array.from({ length: 100 }, (_, i) => ({
+        name: `branch-${i}`,
+        oid: `${i}`,
+        kind: "local" as const,
+      }))}
+      commitCount={100}
+      branch="main"
+      branchFilter=""
+      onFilter={vi.fn()}
+    />,
+  );
+  const scroller = screen.getByLabelText("Branches and tags");
+  fireEvent.scroll(scroller, { target: { scrollTop: 900 } });
+  const header = screen.getByRole("button", { name: /LOCAL BRANCHES/ });
+  expect(header.parentElement?.style.top).toBe("900px");
+  fireEvent.click(header);
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+});
+
+it("offers stash operations and confirms deletion", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(223);
+  const action = vi.fn().mockResolvedValue(undefined);
+  render(
+    <BranchSidebar
+      refs={[]}
+      stashes={[
+        {
+          oid: "a".repeat(40),
+          name: "stash@{0}",
+          message: "On main: Saved work",
+        },
+      ]}
+      onStashAction={action}
+      commitCount={0}
+      branch="main"
+      branchFilter=""
+      onFilter={vi.fn()}
+    />,
+  );
+  fireEvent.contextMenu(screen.getByRole("button", { name: /stash@\{0\}/ }));
+  expect(
+    screen.getByRole("menuitem", { name: "Pop to working tree" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("menuitem", { name: "Apply to working tree" }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete stash…" }));
+  expect(action).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Delete stash" }));
+  expect(action).toHaveBeenCalledWith(
+    expect.objectContaining({ oid: "a".repeat(40) }),
+    "delete",
+  );
+});

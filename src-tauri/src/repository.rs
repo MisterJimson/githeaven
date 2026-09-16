@@ -36,6 +36,49 @@ pub struct Reference {
     pub kind: String,
 }
 #[derive(Serialize)]
+pub struct Stash {
+    pub oid: String,
+    pub name: String,
+    pub message: String,
+}
+
+pub fn stashes(root: &Path) -> Result<Vec<Stash>, String> {
+    Ok(git_text(root, &["stash", "list", "--format=%H%x09%gs"])?
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let (oid, message) = line.split_once('\t')?;
+            Some(Stash {
+                oid: oid.into(),
+                name: format!("stash@{{{i}}}"),
+                message: message.into(),
+            })
+        })
+        .collect())
+}
+pub fn stash_action(root: &Path, oid: &str, action: &str) -> Result<(), String> {
+    validate_oid(oid)?;
+    if !["apply", "pop", "delete"].contains(&action) {
+        return Err("Unknown stash action.".into());
+    }
+    let find = || {
+        stashes(root)?
+            .into_iter()
+            .find(|s| s.oid == oid)
+            .ok_or_else(|| "This stash is no longer available. Refresh and try again.".to_string())
+    };
+    find()?;
+    if action != "delete" {
+        git(root, &["stash", "apply", oid])?;
+    }
+    if action != "apply" {
+        let stash = find()?;
+        git(root, &["stash", "drop", &stash.name])?;
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
 pub struct Snapshot {
     pub root: String,
     pub name: String,
@@ -45,6 +88,7 @@ pub struct Snapshot {
     pub changes: Vec<Change>,
     pub commits: Option<Vec<Commit>>,
     pub refs: Option<Vec<Reference>>,
+    pub stashes: Vec<Stash>,
     pub has_more: bool,
     pub elapsed_ms: f64,
     pub watch_warning: Option<String>,
@@ -340,6 +384,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
         commits,
         refs,
         has_more,
+        stashes: stashes(root)?,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.,
         watch_warning: None,
     })
@@ -1562,6 +1607,31 @@ mod tests {
         checkout(r, "origin/new-feature", "remote").unwrap();
         assert!(checkout(r, "--force", "local").is_err());
     }
+    #[test]
+    fn stash_actions_keep_apply_remove_pop_and_retain_conflicts() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(r.join("a"), "base\n").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        fs::write(r.join("a"), "stash\n").unwrap();
+        git(r, &["stash", "push", "-m", "Saved work"]).unwrap();
+        let oid = stashes(r).unwrap()[0].oid.clone();
+        stash_action(r, &oid, "apply").unwrap();
+        assert_eq!(stashes(r).unwrap().len(), 1);
+        assert_eq!(fs::read_to_string(r.join("a")).unwrap(), "stash\n");
+        assert!(stash_action(r, &oid, "pop").is_err());
+        assert_eq!(stashes(r).unwrap().len(), 1);
+        git(r, &["restore", "a"]).unwrap();
+        stash_action(r, &oid, "pop").unwrap();
+        assert!(stashes(r).unwrap().is_empty());
+        git(r, &["stash", "push"]).unwrap();
+        let oid = stashes(r).unwrap()[0].oid.clone();
+        stash_action(r, &oid, "delete").unwrap();
+        assert!(stashes(r).unwrap().is_empty());
+        assert_eq!(fs::read_to_string(r.join("a")).unwrap(), "base\n");
+    }
+
     #[test]
     fn remote_checkout_fast_forwards_existing_branch_and_preserves_divergence() {
         let remote = repo();
