@@ -6,6 +6,7 @@ export function DiscardMenu({
   y,
   disabled,
   onDiscard,
+  onStash,
   onClose,
 }: {
   paths: string[];
@@ -13,6 +14,7 @@ export function DiscardMenu({
   y: number;
   disabled: boolean;
   onDiscard: (paths: string[]) => Promise<void>;
+  onStash?: (paths: string[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
@@ -83,13 +85,35 @@ export function DiscardMenu({
           aria-label="File actions"
           style={{
             left: Math.max(0, Math.min(x, window.innerWidth - 230)),
-            top: Math.max(0, Math.min(y, window.innerHeight - 52)),
+            top: Math.max(0, Math.min(y, window.innerHeight - 100)),
           }}
         >
+          {onStash && (
+            <button
+              role="menuitem"
+              disabled={disabled || busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  await onStash(paths);
+                  onClose();
+                } catch (e) {
+                  setError(String(e));
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy
+                ? "Stashing…"
+                : `Stash changes${paths.length > 1 ? ` to ${paths.length} files` : ""}`}
+            </button>
+          )}
+          {error && <p role="alert">{error}</p>}
           <button
             role="menuitem"
             autoFocus
-            disabled={disabled}
+            disabled={disabled || busy}
             onClick={() => setConfirm(true)}
           >
             Discard changes{paths.length > 1 ? ` to ${paths.length} files` : ""}

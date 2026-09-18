@@ -792,6 +792,42 @@ pub fn stage(root: &Path, path: &str, unstage: bool) -> Result<(), String> {
     git(root, &args).map(|_| ())
 }
 
+pub fn stash_files(root: &Path, paths: &[String]) -> Result<(), String> {
+    let changes = parse_status(git(
+        root,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?)?;
+    let mut selected = std::collections::BTreeSet::new();
+    for path in paths {
+        let change = changes
+            .iter()
+            .find(|c| &c.path == path)
+            .ok_or("A selected file is no longer changed. Refresh and try again.")?;
+        selected.insert(change.path.clone());
+        if let Some(original) = &change.original_path {
+            selected.insert(original.clone());
+        }
+    }
+    if selected.is_empty() {
+        return Err("Select at least one file to stash.".into());
+    }
+    for path in &selected {
+        if safe_path(root, path)?.is_dir() {
+            return Err("Stashing directories or submodules is not supported.".into());
+        }
+    }
+    let mut args = vec![
+        "--literal-pathspecs",
+        "stash",
+        "push",
+        "--include-untracked",
+        "--",
+    ];
+    args.extend(selected.iter().map(String::as_str));
+    git(root, &args)?;
+    Ok(())
+}
+
 pub fn discard_files(root: &Path, paths: &[String]) -> Result<(), String> {
     let changes = parse_status(git(
         root,
@@ -1042,6 +1078,29 @@ mod tests {
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
     }
+    #[test]
+    fn stash_selected_files_preserves_other_work_and_recovers_new_files() {
+        let temp = repo();
+        let r = temp.path();
+        fs::write(r.join("chosen"), "base").unwrap();
+        fs::write(r.join("other"), "base").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        fs::write(r.join("chosen"), "staged").unwrap();
+        git(r, &["add", "chosen"]).unwrap();
+        fs::write(r.join("chosen"), "unstaged").unwrap();
+        fs::write(r.join("other"), "keep").unwrap();
+        fs::write(r.join("new"), "new content").unwrap();
+        stash_files(r, &["chosen".into(), "new".into()]).unwrap();
+        assert_eq!(fs::read_to_string(r.join("chosen")).unwrap(), "base");
+        assert_eq!(fs::read_to_string(r.join("other")).unwrap(), "keep");
+        assert!(!r.join("new").exists());
+        git(r, &["stash", "apply", "--index"]).unwrap();
+        assert_eq!(fs::read_to_string(r.join("chosen")).unwrap(), "unstaged");
+        assert_eq!(git_text(r, &["show", ":chosen"]).unwrap(), "staged");
+        assert_eq!(fs::read_to_string(r.join("new")).unwrap(), "new content");
+    }
+
     #[test]
     fn pull_updates_from_upstream_and_preserves_overlapping_working_edits() {
         let origin = repo();

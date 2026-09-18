@@ -261,3 +261,35 @@ it.each(["path", "tree"] as const)(
     expect(discard).toHaveBeenCalledWith(["a.ts", "b.ts", "c.ts"]);
   },
 );
+
+it.each(["path", "tree"] as const)(
+  "stashes selected files in %s view",
+  (view) => {
+    const stash = vi.fn().mockResolvedValue(undefined);
+    function Harness() {
+      const [selected, setSelected] = useState<string>();
+      return (
+        <ChangeFiles
+          paths={["a.ts", "b.ts"]}
+          changes={[]}
+          staged={false}
+          view={view}
+          selected={selected}
+          onSelect={setSelected}
+          onDiscard={vi.fn()}
+          onStash={stash}
+        />
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "a.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "b.ts" }), {
+      shiftKey: true,
+    });
+    fireEvent.contextMenu(screen.getByRole("button", { name: "b.ts" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Stash changes to 2 files" }),
+    );
+    expect(stash).toHaveBeenCalledWith(["a.ts", "b.ts"]);
+  },
+);

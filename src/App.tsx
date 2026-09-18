@@ -2128,6 +2128,28 @@ export function App() {
                                   setBusy("");
                                 }
                               }}
+                              onStash={async (paths) => {
+                                if (
+                                  busy ||
+                                  dirtyRef.current ||
+                                  stageRunning.current
+                                )
+                                  throw new Error(
+                                    "Finish the current operation or save your editor changes first.",
+                                  );
+                                setBusy("Stashing changes");
+                                try {
+                                  await call("stash_files", {
+                                    root: repo.root,
+                                    paths,
+                                  });
+                                  setChangeSelection(null);
+                                  setDiffOpen(false);
+                                } finally {
+                                  await refresh(true);
+                                  setBusy("");
+                                }
+                              }}
                               selected={changeSelection}
                               onSelect={(path, staged) =>
                                 navigate(() => chooseChange(path, staged))

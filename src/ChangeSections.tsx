@@ -10,6 +10,7 @@ export function ChangeSections({
   onSelect,
   onStageAll,
   onDiscard,
+  onStash,
   busy = false,
   selectionActive = true,
   selected,
@@ -17,6 +18,7 @@ export function ChangeSections({
   changes: Change[];
   onSelect: (path: string, staged: boolean) => void;
   onDiscard?: (paths: string[]) => Promise<void>;
+  onStash?: (paths: string[]) => Promise<void>;
   onStageAll?: (unstage: boolean) => void;
   busy?: boolean;
   selectionActive?: boolean;
@@ -106,6 +108,7 @@ export function ChangeSections({
               <ChangeFiles
                 paths={section.paths}
                 onDiscard={onDiscard}
+                onStash={onStash}
                 busy={busy}
                 changes={changes}
                 staged={section.staged}
@@ -139,9 +142,11 @@ export function ChangeFiles({
   selected,
   onSelect,
   onDiscard,
+  onStash,
   busy = false,
 }: {
   onDiscard?: (paths: string[]) => Promise<void>;
+  onStash?: (paths: string[]) => Promise<void>;
   busy?: boolean;
   paths: string[];
   changes: Change[];
@@ -212,6 +217,7 @@ export function ChangeFiles({
           {...menu}
           disabled={busy}
           onDiscard={onDiscard}
+          onStash={onStash}
           onClose={() => setMenu(null)}
         />
       )}
