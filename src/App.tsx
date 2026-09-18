@@ -207,6 +207,11 @@ export function App() {
   const limitRef = useRef(500);
   const loadingOlder = useRef(false);
   const [filter, setFilter] = useState("");
+  const [stashReveal, setStashReveal] = useState<{
+    root: string;
+    oid: string;
+    sequence: number;
+  } | null>(null);
   const [branchFilter, setBranchFilter] = useState("");
   const [activeRef, setActiveRef] = useState<Reference | null>(null);
   const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(
@@ -1689,6 +1694,25 @@ export function App() {
                             refs={repo.refs ?? []}
                             stashes={repo.stashes}
                             onStashAction={handleStashAction}
+                            onSelectStash={(stash) =>
+                              navigate(() => {
+                                setBranchFilter("");
+                                setActiveRef(null);
+                                selectCommit({
+                                  oid: stash.oid,
+                                  parents: stash.base ? [stash.base] : [],
+                                  subject: stash.message,
+                                  author: stash.author ?? "",
+                                  author_email: stash.author_email,
+                                  timestamp: stash.timestamp ?? 0,
+                                });
+                                setStashReveal((previous) => ({
+                                  root: repo.root,
+                                  oid: stash.oid,
+                                  sequence: (previous?.sequence ?? 0) + 1,
+                                }));
+                              })
+                            }
                             commitCount={repo.commits?.length ?? 0}
                             branch={repo.branch}
                             branchFilter={branchFilter}
@@ -1735,6 +1759,11 @@ export function App() {
                               onLoadMore={loadOlder}
                               commits={repo.commits ?? []}
                               stashes={repo.stashes}
+                              revealStash={
+                                stashReveal?.root === repo.root
+                                  ? stashReveal
+                                  : null
+                              }
                               onStashAction={handleStashAction}
                               branchTip={branchFilter}
                               search={filter}

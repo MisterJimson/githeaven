@@ -31,6 +31,7 @@ export const History = memo(function History({
   root,
   commits,
   stashes,
+  revealStash,
   onStashAction,
   search = "",
   branchTip = "",
@@ -53,6 +54,7 @@ export const History = memo(function History({
   root?: string;
   commits: Commit[];
   stashes?: Stash[];
+  revealStash?: { oid: string; sequence: number } | null;
   onStashAction?: (
     stash: Stash,
     action: "apply" | "pop" | "delete",
@@ -227,6 +229,18 @@ export const History = memo(function History({
     revealedBranch.current = branchTip;
     if (!visible) virtual.scrollToIndex(first, { align: "start" });
   }, [branchTip, branchHistory, entries, active, hasMore, onLoadMore, virtual]);
+  const revealedStash = useRef<typeof revealStash>(null);
+  useEffect(() => {
+    if (!active || !revealStash || revealedStash.current === revealStash)
+      return;
+    const index = entries.findIndex((commit) => commit.oid === revealStash.oid);
+    if (index < 0) {
+      if (hasMore) onLoadMore?.();
+      return;
+    }
+    revealedStash.current = revealStash;
+    virtual.scrollToIndex(index, { align: "auto" });
+  }, [active, revealStash, entries, hasMore, onLoadMore, virtual]);
   function loadNearEnd() {
     const viewport = scroll.current;
     if (

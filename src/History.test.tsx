@@ -426,3 +426,55 @@ it("places a stash before its base with a distinct node and stash actions", () =
   );
   expect(onAction).toHaveBeenCalledWith(stash, "apply");
 });
+
+it("loads history then reveals a requested stash, and supports repeated clicks", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(56);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(56);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+  const scrollTo = vi.fn();
+  HTMLElement.prototype.scrollTo = scrollTo;
+  const commits = Array.from({ length: 12 }, (_, i) => ({
+    oid: `c${i}`,
+    parents: [],
+    subject: `Commit ${i}`,
+    author: "A",
+    timestamp: 12 - i,
+  }));
+  const props = {
+    refs: [],
+    head: "c0",
+    branch: "main",
+    workingCount: 0,
+    workingSelected: false,
+    onSelect: vi.fn(),
+    onSelectWorking: vi.fn(),
+    stashes: [
+      { oid: "stash", base: "c11", name: "stash@{0}", message: "Draft" },
+    ],
+  };
+  const onLoadMore = vi.fn();
+  const request = { oid: "stash", sequence: 1 };
+  const { rerender } = render(
+    <History
+      {...props}
+      commits={commits.slice(0, 2)}
+      hasMore
+      onLoadMore={onLoadMore}
+      revealStash={request}
+    />,
+  );
+  expect(onLoadMore).toHaveBeenCalled();
+  scrollTo.mockClear();
+  rerender(<History {...props} commits={commits} revealStash={request} />);
+  expect(scrollTo).toHaveBeenCalled();
+  scrollTo.mockClear();
+  rerender(
+    <History
+      {...props}
+      commits={commits}
+      revealStash={{ oid: "stash", sequence: 2 }}
+    />,
+  );
+  expect(scrollTo).toHaveBeenCalled();
+});

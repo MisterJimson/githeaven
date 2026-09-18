@@ -15,6 +15,7 @@ export const BranchSidebar = memo(function BranchSidebar({
   refs,
   stashes = [],
   onStashAction,
+  onSelectStash,
   commitCount,
   branch,
   branchFilter,
@@ -26,6 +27,7 @@ export const BranchSidebar = memo(function BranchSidebar({
 }: {
   refs: Reference[];
   stashes?: Stash[];
+  onSelectStash?: (stash: Stash) => void;
   onStashAction?: (
     stash: Stash,
     action: "apply" | "pop" | "delete",
@@ -212,6 +214,7 @@ export const BranchSidebar = memo(function BranchSidebar({
                   <button
                     className="branch-row"
                     title={`${row.stash.name}: ${row.stash.message}`}
+                    onClick={() => onSelectStash?.(row.stash)}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       if (!busy && onStashAction)
