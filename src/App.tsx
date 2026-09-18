@@ -61,6 +61,7 @@ import {
 import { startForegroundTiming } from "./timing";
 import type {
   Commit,
+  Stash,
   Details,
   Mode,
   Selection,
@@ -1283,6 +1284,28 @@ export function App() {
       })),
     [repo?.files],
   );
+  async function handleStashAction(
+    stash: Stash,
+    action: "apply" | "pop" | "delete",
+  ) {
+    if (!repo) return;
+    if (busy || dirtyRef.current || stageRunning.current)
+      throw new Error(
+        "Finish the current operation or save your editor changes first.",
+      );
+    setBusy(action === "delete" ? "Deleting stash" : "Applying stash");
+    try {
+      await call("stash_action", {
+        root: repo.root,
+        oid: stash.oid,
+        action,
+      });
+      if (action !== "delete") showWorking();
+    } finally {
+      await refresh(true);
+      setBusy("");
+    }
+  }
   const quickCommands = useMemo<QuickItem[]>(() => {
     const commands: QuickItem[] = [
       { id: "open", label: "Open repository…", kind: "command", value: "open" },
@@ -1665,32 +1688,7 @@ export function App() {
                             activeRef={activeRef}
                             refs={repo.refs ?? []}
                             stashes={repo.stashes}
-                            onStashAction={async (stash, action) => {
-                              if (
-                                busy ||
-                                dirtyRef.current ||
-                                stageRunning.current
-                              )
-                                throw new Error(
-                                  "Finish the current operation or save your editor changes first.",
-                                );
-                              setBusy(
-                                action === "delete"
-                                  ? "Deleting stash"
-                                  : "Applying stash",
-                              );
-                              try {
-                                await call("stash_action", {
-                                  root: repo.root,
-                                  oid: stash.oid,
-                                  action,
-                                });
-                                if (action !== "delete") showWorking();
-                              } finally {
-                                await refresh(true);
-                                setBusy("");
-                              }
-                            }}
+                            onStashAction={handleStashAction}
                             commitCount={repo.commits?.length ?? 0}
                             branch={repo.branch}
                             branchFilter={branchFilter}
@@ -1736,6 +1734,8 @@ export function App() {
                               hasMore={repo.has_more}
                               onLoadMore={loadOlder}
                               commits={repo.commits ?? []}
+                              stashes={repo.stashes}
+                              onStashAction={handleStashAction}
                               branchTip={branchFilter}
                               search={filter}
                               refs={repo.refs ?? []}

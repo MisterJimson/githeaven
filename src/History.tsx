@@ -1,3 +1,4 @@
+import { StashMenu } from "./StashMenu";
 import { BranchContextMenu } from "./BranchContextMenu";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -17,7 +18,7 @@ import {
   GRAPH_ROW_HEIGHT,
   GRAPH_ROW_CENTER,
 } from "./graph";
-import type { Commit, Reference } from "./types";
+import type { Commit, Reference, Stash } from "./types";
 const colors = [
   "#8dd9bb",
   "#ac9bef",
@@ -29,6 +30,8 @@ const colors = [
 export const History = memo(function History({
   root,
   commits,
+  stashes,
+  onStashAction,
   search = "",
   branchTip = "",
   refs,
@@ -49,6 +52,11 @@ export const History = memo(function History({
 }: {
   root?: string;
   commits: Commit[];
+  stashes?: Stash[];
+  onStashAction?: (
+    stash: Stash,
+    action: "apply" | "pop" | "delete",
+  ) => Promise<void>;
   search?: string;
   branchTip?: string;
   refs: Reference[];
@@ -67,6 +75,35 @@ export const History = memo(function History({
   hasMore?: boolean;
   onLoadMore?: () => void;
 }) {
+  const [stashContext, setStashContext] = useState<{
+    root?: string;
+    stash: Stash;
+    x: number;
+    y: number;
+  } | null>(null);
+  const stashMap = useMemo(
+    () => new Map((stashes ?? []).map((s) => [s.oid, s])),
+    [stashes],
+  );
+  const historyCommits = useMemo(() => {
+    const byBase = new Map<string, Commit[]>();
+    const ids = new Set(commits.map((c) => c.oid));
+    for (const stash of stashes ?? []) {
+      const entry: Commit = {
+        oid: stash.oid,
+        parents: stash.base ? [stash.base] : [],
+        subject: stash.message,
+        author: stash.author ?? "",
+        author_email: stash.author_email,
+        timestamp: stash.timestamp ?? 0,
+      };
+      if (stash.base && ids.has(stash.base))
+        byBase.set(stash.base, [...(byBase.get(stash.base) ?? []), entry]);
+    }
+    return commits
+      .filter((c) => !stashMap.has(c.oid))
+      .flatMap((c) => [...(byBase.get(c.oid) ?? []), c]);
+  }, [commits, stashes, stashMap]);
   const [context, setContext] = useState<{
     root?: string;
     ref: Reference;
@@ -118,10 +155,10 @@ export const History = memo(function History({
               author: "",
               timestamp: 0,
             },
-            ...commits,
+            ...historyCommits,
           ]
-        : commits,
-    [commits, head, hasWorkingChanges],
+        : historyCommits,
+    [historyCommits, head, hasWorkingChanges],
   );
   const branchHistory = useMemo(
     () => (branchTip ? reachable(commits, branchTip) : null),
@@ -298,10 +335,12 @@ export const History = memo(function History({
           {virtual.getVirtualItems().map((item) => {
             const commit = entries[item.index];
             const row = graph[item.index];
+            const stash = stashMap.get(commit.oid);
             const isWorking = hasWorkingChanges && item.index === 0;
             const dimmed =
               !isWorking &&
-              ((branchHistory !== null && !branchHistory.has(commit.oid)) ||
+              ((branchHistory !== null &&
+                !branchHistory.has(stash?.base ?? commit.oid)) ||
                 (!!query &&
                   !`${commit.subject} ${commit.author} ${commit.oid}`
                     .toLowerCase()
@@ -328,6 +367,21 @@ export const History = memo(function History({
                     else onSelect(commit);
                   }
                 }}
+                onContextMenu={
+                  stash && onStashAction
+                    ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!busy)
+                          setStashContext({
+                            root,
+                            stash,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                      }
+                    : undefined
+                }
                 key={commit.oid}
                 role="option"
                 aria-selected={isSelected}
@@ -461,6 +515,27 @@ export const History = memo(function History({
                       strokeWidth={2}
                       strokeDasharray="2 2"
                     />
+                  ) : stash ? (
+                    <g
+                      aria-label="Stash"
+                      transform={`translate(${22 + row.lane * 16}, ${GRAPH_ROW_CENTER})`}
+                    >
+                      <rect
+                        x={-7}
+                        y={-7}
+                        width={14}
+                        height={14}
+                        rx={3}
+                        fill="var(--canvas)"
+                        stroke={rowColor}
+                        strokeWidth={2}
+                      />
+                      <path
+                        d="M -4 -2 H 4 M -4 2 H 4"
+                        stroke={rowColor}
+                        strokeWidth={1.5}
+                      />
+                    </g>
                   ) : (
                     <CommitNode
                       root={root}
@@ -471,6 +546,7 @@ export const History = memo(function History({
                   )}
                 </svg>
                 <span className="commit-subject">
+                  {stash && <span className="wip-badge">{stash.name}</span>}
                   {isWorking && <span className="wip-badge">// WIP</span>}
                   <span title={commit.subject}>{commit.subject}</span>
                   {isWorking && (
@@ -491,6 +567,16 @@ export const History = memo(function History({
           </div>
         )}
       </div>
+      {stashContext &&
+        stashContext.root === root &&
+        active &&
+        onStashAction && (
+          <StashMenu
+            {...stashContext}
+            onAction={onStashAction}
+            onClose={() => setStashContext(null)}
+          />
+        )}
       {context && context.root === root && active && onDeleteRef && (
         <BranchContextMenu
           key={`${root}:${context.ref.kind}:${context.ref.name}`}

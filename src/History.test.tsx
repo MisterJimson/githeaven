@@ -368,3 +368,61 @@ it("shows a floating jump button only deep in history and returns to top without
   fireEvent.scroll(viewport, { target: { scrollTop: 200 } });
   expect(screen.queryByRole("button", { name: "Jump to top" })).toBeNull();
 });
+
+it("places a stash before its base with a distinct node and stash actions", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  const onSelect = vi.fn();
+  const onAction = vi.fn().mockResolvedValue(undefined);
+  const stash = {
+    oid: "saved",
+    base: "base",
+    name: "stash@{0}",
+    message: "Saved edits",
+    author: "Author",
+    timestamp: 3,
+  };
+  render(
+    <History
+      commits={[
+        {
+          oid: "tip",
+          parents: ["base"],
+          author: "Author",
+          timestamp: 2,
+          subject: "Latest",
+        },
+        {
+          oid: "base",
+          parents: [],
+          author: "Author",
+          timestamp: 1,
+          subject: "Base",
+        },
+      ]}
+      stashes={[stash]}
+      refs={[]}
+      head="tip"
+      branch="main"
+      workingCount={0}
+      workingSelected={false}
+      onSelectWorking={() => {}}
+      onSelect={onSelect}
+      onStashAction={onAction}
+    />,
+  );
+  const rows = screen.getAllByRole("option");
+  expect(rows[0].textContent).toContain("Latest");
+  expect(rows[1].textContent).toContain("stash@{0}Saved edits");
+  expect(rows[2].textContent).toContain("Base");
+  expect(rows[1].querySelector('[aria-label="Stash"]')).toBeTruthy();
+  fireEvent.click(rows[1]);
+  expect(onSelect).toHaveBeenCalledWith(
+    expect.objectContaining({ oid: "saved", parents: ["base"] }),
+  );
+  fireEvent.contextMenu(rows[1]);
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Apply to working tree" }),
+  );
+  expect(onAction).toHaveBeenCalledWith(stash, "apply");
+});

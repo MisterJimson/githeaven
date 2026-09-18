@@ -1,4 +1,8 @@
 export interface Stash {
+  base?: string;
+  author?: string;
+  author_email?: string;
+  timestamp?: number;
   oid: string;
   name: string;
   message: string;

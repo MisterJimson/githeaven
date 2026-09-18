@@ -37,24 +37,45 @@ pub struct Reference {
 }
 #[derive(Serialize)]
 pub struct Stash {
+    pub base: String,
+    pub author: String,
+    pub author_email: String,
+    pub timestamp: i64,
     pub oid: String,
     pub name: String,
     pub message: String,
 }
 
 pub fn stashes(root: &Path) -> Result<Vec<Stash>, String> {
-    Ok(git_text(root, &["stash", "list", "--format=%H%x09%gs"])?
-        .lines()
-        .enumerate()
-        .filter_map(|(i, line)| {
-            let (oid, message) = line.split_once('\t')?;
-            Some(Stash {
-                oid: oid.into(),
-                name: format!("stash@{{{i}}}"),
-                message: message.into(),
-            })
+    Ok(git_text(
+        root,
+        &[
+            "stash",
+            "list",
+            "--format=%H%x09%P%x09%an%x09%ae%x09%at%x09%gs",
+        ],
+    )?
+    .lines()
+    .enumerate()
+    .filter_map(|(i, line)| {
+        let mut fields = line.splitn(6, '\t');
+        let oid = fields.next()?;
+        let base = fields.next()?.split_whitespace().next()?.to_string();
+        let author = fields.next()?.to_string();
+        let author_email = fields.next()?.to_string();
+        let timestamp = fields.next()?.parse().ok()?;
+        let message = fields.next()?;
+        Some(Stash {
+            base,
+            author,
+            author_email,
+            timestamp,
+            oid: oid.into(),
+            name: format!("stash@{{{i}}}"),
+            message: message.into(),
         })
-        .collect())
+    })
+    .collect())
 }
 pub fn stash_action(root: &Path, oid: &str, action: &str) -> Result<(), String> {
     validate_oid(oid)?;
@@ -229,6 +250,11 @@ pub fn parse_status(bytes: Vec<u8>) -> Result<Vec<Change>, String> {
 }
 pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, String> {
     let start = Instant::now();
+    let saved_stashes = stashes(root)?;
+    let stash_bases: Vec<String> = saved_stashes
+        .iter()
+        .map(|stash| stash.base.clone())
+        .collect();
     let (status, paths, head, branch, raw_refs, raw_log) = std::thread::scope(|s| {
         let status = s.spawn(|| {
             git(
@@ -279,7 +305,9 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
         let count = limit.saturating_add(1).to_string();
         let mut args = vec![
             "log",
-            "--all",
+            "--branches",
+            "--remotes",
+            "--tags",
             "--topo-order",
             "-z",
             "--format=%H%x00%P%x00%an%x00%at%x00%s%x00%ae%x00%(trailers:key=Co-authored-by,valueonly,separator=%x1f)",
@@ -289,6 +317,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
         if has_head {
             args.push("HEAD");
         }
+        args.extend(stash_bases.iter().map(String::as_str));
         git_text(root, &args)
         }));
         Ok::<_, String>((
@@ -384,7 +413,7 @@ pub fn snapshot(root: &Path, limit: usize, history: bool) -> Result<Snapshot, St
         commits,
         refs,
         has_more,
-        stashes: stashes(root)?,
+        stashes: saved_stashes,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.,
         watch_warning: None,
     })
@@ -1078,6 +1107,24 @@ mod tests {
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
     }
+    #[test]
+    fn stash_graph_metadata_excludes_internal_commits_from_history() {
+        let temp = repo();
+        let r = temp.path();
+        fs::write(r.join("file"), "base").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        let base = git_text(r, &["rev-parse", "HEAD"]).unwrap();
+        fs::write(r.join("file"), "draft").unwrap();
+        git(r, &["stash", "push", "-m", "Draft"]).unwrap();
+        let result = snapshot(r, 100, true).unwrap();
+        assert_eq!(result.stashes.len(), 1);
+        assert_eq!(result.stashes[0].base, base.trim());
+        assert!(!result.stashes[0].author.is_empty());
+        assert!(result.stashes[0].timestamp > 0);
+        assert_eq!(result.commits.unwrap().len(), 1);
+    }
+
     #[test]
     fn stash_selected_files_preserves_other_work_and_recovers_new_files() {
         let temp = repo();
