@@ -43,6 +43,7 @@ export interface Snapshot {
   watch_warning: string | null;
 }
 export interface Details {
+  file_oids?: Record<string, string>;
   additions?: number;
   deletions?: number;
   message: string;

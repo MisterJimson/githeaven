@@ -679,6 +679,8 @@ export function App() {
     setHistorySelection(null);
     const timer = setTimeout(() => {
       call<Details>("commit_details", {
+        stash:
+          repo.stashes?.some((stash) => stash.oid === selected.oid) ?? false,
         root: repo.root,
         oid: selected.oid,
         parent,
@@ -690,8 +692,8 @@ export function App() {
             d.paths[0]
               ? {
                   source: "commit",
-                  oid: selected.oid,
-                  parent: d.parent,
+                  oid: d.file_oids?.[d.paths[0]] ?? selected.oid,
+                  parent: d.file_oids?.[d.paths[0]] ? null : d.parent,
                   path: d.paths[0],
                 }
               : null,
@@ -882,8 +884,8 @@ export function App() {
         ? details.paths.map((path) => ({
             path,
             source: "commit",
-            oid: selected.oid,
-            parent: details.parent,
+            oid: details.file_oids?.[path] ?? selected.oid,
+            parent: details.file_oids?.[path] ? null : details.parent,
           }))
         : undefined,
     [reviewKind, selected?.oid, details],
@@ -2387,8 +2389,12 @@ export function App() {
                                       setHistorySelection({
                                         source: "commit",
                                         path,
-                                        oid: selected.oid,
-                                        parent: details.parent,
+                                        oid:
+                                          details.file_oids?.[path] ??
+                                          selected.oid,
+                                        parent: details.file_oids?.[path]
+                                          ? null
+                                          : details.parent,
                                       });
                                       setDiffOpen(true);
                                     }

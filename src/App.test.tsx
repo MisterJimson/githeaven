@@ -1728,3 +1728,48 @@ it("offers publishing a branch without an upstream instead of displaying the Git
     }),
   );
 });
+
+it("opens saved untracked stash files using their own snapshot", async () => {
+  const stash = {
+    oid: "saved",
+    base: "base",
+    name: "stash@{0}",
+    message: "Stashed draft",
+  };
+  await openWorkspace({
+    stashes: [stash],
+    commits: [
+      { oid: "base", parents: [], subject: "Base", author: "A", timestamp: 1 },
+    ],
+  });
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "commit_details")
+      return {
+        paths: ["new.ts"],
+        file_oids: { "new.ts": "untracked" },
+        parent: "base",
+        message: "Stashed draft",
+        elapsed_ms: 1,
+      };
+    return [];
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Git/ }));
+  fireEvent.click(screen.getByRole("option", { name: /Stashed draft/ }));
+  await screen.findByRole("button", { name: "new.ts" });
+  expect(call).toHaveBeenCalledWith(
+    "commit_details",
+    expect.objectContaining({ oid: "saved", stash: true }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "new.ts" }));
+  await waitFor(() =>
+    expect(diffWork.view).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          oid: "untracked",
+          parent: null,
+          path: "new.ts",
+        }),
+      }),
+    ),
+  );
+});

@@ -116,6 +116,7 @@ pub struct Snapshot {
 }
 #[derive(Serialize)]
 pub struct CommitDetails {
+    pub file_oids: std::collections::BTreeMap<String, String>,
     pub additions: u64,
     pub deletions: u64,
     pub message: String,
@@ -480,6 +481,7 @@ pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDet
         paths.push(fields.next().ok_or("Invalid diff statistics")?.to_string());
     }
     Ok(CommitDetails {
+        file_oids: Default::default(),
         additions,
         deletions,
         message,
@@ -488,6 +490,24 @@ pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDet
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.,
     })
 }
+pub fn stash_details(root: &Path, oid: &str) -> Result<CommitDetails, String> {
+    let mut result = details(root, oid, None)?;
+    let parents = git_text(root, &["show", "-s", "--format=%P", oid])?;
+    if let Some(untracked) = parents.split_whitespace().nth(2) {
+        let extra = details(root, untracked, None)?;
+        result.additions += extra.additions;
+        result.deletions += extra.deletions;
+        for path in extra.paths {
+            if !result.paths.contains(&path) {
+                result.file_oids.insert(path.clone(), untracked.into());
+                result.paths.push(path);
+            }
+        }
+        result.paths.sort();
+    }
+    Ok(result)
+}
+
 fn relative(path: &str) -> Result<&Path, String> {
     let path = Path::new(path);
     if path.as_os_str().is_empty()
@@ -1107,6 +1127,51 @@ mod tests {
         git(dir.path(), &["config", "user.email", "test@example.com"]).unwrap();
         dir
     }
+    #[test]
+    fn stash_details_include_untracked_only_and_mixed_file_diffs() {
+        let temp = repo();
+        let r = temp.path();
+        fs::write(r.join("tracked"), "base\n").unwrap();
+        git(r, &["add", "."]).unwrap();
+        git(r, &["commit", "-m", "Base"]).unwrap();
+        fs::write(r.join("new.ts"), "new code\n").unwrap();
+        git(r, &["stash", "push", "-u"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "stash@{0}"]).unwrap();
+        let result = stash_details(r, oid.trim()).unwrap();
+        assert_eq!(result.paths, vec!["new.ts"]);
+        assert_eq!(result.additions, 1);
+        let saved = versions(
+            r,
+            "new.ts",
+            "commit",
+            Some(&result.file_oids["new.ts"]),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(saved.old, None);
+        assert_eq!(saved.new.as_deref(), Some("new code\n"));
+        fs::write(r.join("tracked"), "changed\n").unwrap();
+        fs::write(r.join("other.ts"), "another\n").unwrap();
+        git(r, &["stash", "push", "-u"]).unwrap();
+        let oid = git_text(r, &["rev-parse", "stash@{0}"]).unwrap();
+        let result = stash_details(r, oid.trim()).unwrap();
+        assert_eq!(result.paths, vec!["other.ts", "tracked"]);
+        assert_eq!((result.additions, result.deletions), (2, 1));
+        assert!(!result.file_oids.contains_key("tracked"));
+        let saved = versions(
+            r,
+            "tracked",
+            "commit",
+            Some(oid.trim()),
+            result.parent.as_deref(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(saved.old.as_deref(), Some("base\n"));
+        assert_eq!(saved.new.as_deref(), Some("changed\n"));
+    }
+
     #[test]
     fn stash_graph_metadata_excludes_internal_commits_from_history() {
         let temp = repo();

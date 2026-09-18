@@ -257,12 +257,19 @@ async fn commit_details(
     root: String,
     oid: String,
     parent: Option<String>,
+    stash: Option<bool>,
     state: State<'_, Session>,
 ) -> Result<CommitDetails, String> {
     let root = state.checked(&root)?;
-    tauri::async_runtime::spawn_blocking(move || details(&root, &oid, parent.as_deref()))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        if stash.unwrap_or(false) {
+            repository::stash_details(&root, &oid)
+        } else {
+            details(&root, &oid, parent.as_deref())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
