@@ -2146,6 +2146,7 @@ export function App() {
                               <div className="commit-fields">
                                 <input
                                   aria-label="Commit summary"
+                                  autoCapitalize="off"
                                   placeholder="Commit summary"
                                   value={message}
                                   onChange={(event) =>
@@ -2154,6 +2155,7 @@ export function App() {
                                 />
                                 <textarea
                                   aria-label="Commit description"
+                                  autoCapitalize="off"
                                   placeholder="Description (optional)"
                                   value={description}
                                   onChange={(event) =>
