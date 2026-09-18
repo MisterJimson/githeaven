@@ -428,7 +428,7 @@ fn validate_oid(oid: &str) -> Result<(), String> {
 }
 fn parent_for(root: &Path, oid: &str, parent: Option<&str>) -> Result<Option<String>, String> {
     validate_oid(oid)?;
-    let parents = git_text(root, &["show", "-s", "--format=%P", oid])?;
+    let parents = git_text(root, &["log", "--no-walk", "-1", "--format=%P", oid])?;
     let list: Vec<_> = parents.split_whitespace().collect();
     match parent {
         Some(p) if list.contains(&p) => Ok(Some(p.into())),
@@ -436,15 +436,21 @@ fn parent_for(root: &Path, oid: &str, parent: Option<&str>) -> Result<Option<Str
         None => Ok(list.first().map(|s| s.to_string())),
     }
 }
-pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDetails, String> {
-    let start = Instant::now();
-    let parent = parent_for(root, oid, parent)?;
-    let message = git_text(root, &["show", "-s", "--format=%B", oid])?;
-    let stats = if let Some(p) = &parent {
+fn commit_metadata(root: &Path, oid: &str) -> Result<(Vec<String>, String), String> {
+    validate_oid(oid)?;
+    let raw = git_text(root, &["log", "--no-walk", "-1", "--format=%P%x00%B", oid])?;
+    let (parents, message) = raw.split_once('\0').ok_or("Invalid commit metadata")?;
+    Ok((
+        parents.split_whitespace().map(str::to_string).collect(),
+        message.into(),
+    ))
+}
+fn detail_stats(root: &Path, oid: &str, parent: Option<&str>) -> Result<Vec<u8>, String> {
+    if let Some(p) = parent {
         git(
             root,
             &["diff", "--no-renames", "--numstat", "-z", p, oid, "--"],
-        )?
+        )
     } else {
         git(
             root,
@@ -459,8 +465,26 @@ pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDet
                 oid,
                 "--",
             ],
-        )?
+        )
+    }
+}
+pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDetails, String> {
+    let start = Instant::now();
+    let (parents, message) = commit_metadata(root, oid)?;
+    let parent = match parent {
+        Some(p) if parents.iter().any(|candidate| candidate == p) => Some(p.to_string()),
+        Some(_) => return Err("Selected parent does not belong to this commit.".into()),
+        None => parents.first().cloned(),
     };
+    let stats = detail_stats(root, oid, parent.as_deref())?;
+    parse_details(&stats, message, parent, start)
+}
+fn parse_details(
+    stats: &[u8],
+    message: String,
+    parent: Option<String>,
+    start: Instant,
+) -> Result<CommitDetails, String> {
     let mut paths = Vec::new();
     let mut additions = 0;
     let mut deletions = 0;
@@ -491,20 +515,34 @@ pub fn details(root: &Path, oid: &str, parent: Option<&str>) -> Result<CommitDet
     })
 }
 pub fn stash_details(root: &Path, oid: &str) -> Result<CommitDetails, String> {
-    let mut result = details(root, oid, None)?;
-    let parents = git_text(root, &["show", "-s", "--format=%P", oid])?;
-    if let Some(untracked) = parents.split_whitespace().nth(2) {
-        let extra = details(root, untracked, None)?;
+    let start = Instant::now();
+    let (parents, message) = commit_metadata(root, oid)?;
+    let parent = parents.first().cloned();
+    let untracked = parents.get(2);
+    let (tracked_stats, untracked_stats) = std::thread::scope(|scope| {
+        let tracked = scope.spawn(|| detail_stats(root, oid, parent.as_deref()));
+        let extra = untracked
+            .map(|oid| detail_stats(root, oid, None))
+            .transpose();
+        Ok::<_, String>((
+            tracked.join().map_err(|_| "Stash diff worker failed")??,
+            extra?,
+        ))
+    })?;
+    let mut result = parse_details(&tracked_stats, message, parent, start)?;
+    if let (Some(oid), Some(stats)) = (untracked, untracked_stats) {
+        let extra = parse_details(&stats, String::new(), None, start)?;
         result.additions += extra.additions;
         result.deletions += extra.deletions;
         for path in extra.paths {
             if !result.paths.contains(&path) {
-                result.file_oids.insert(path.clone(), untracked.into());
+                result.file_oids.insert(path.clone(), oid.clone());
                 result.paths.push(path);
             }
         }
         result.paths.sort();
     }
+    result.elapsed_ms = start.elapsed().as_secs_f64() * 1000.;
     Ok(result)
 }
 

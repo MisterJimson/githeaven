@@ -1,3 +1,4 @@
+import { cachedStashDetails, loadStashDetails } from "./stashDetails";
 import { PublishBranch, type PublishTarget } from "./PublishBranch";
 import { NewBranch } from "./NewBranch";
 import { CommitStats } from "./CommitStats";
@@ -675,34 +676,46 @@ export function App() {
       return;
     }
     let active = true;
+    const isStash =
+      repo.stashes?.some((stash) => stash.oid === selected.oid) ?? false;
+    const apply = (d: Details) => {
+      if (!active) return;
+      setDetails(d);
+      setHistorySelection(
+        d.paths[0]
+          ? {
+              source: "commit",
+              oid: d.file_oids?.[d.paths[0]] ?? selected.oid,
+              parent: d.file_oids?.[d.paths[0]] ? null : d.parent,
+              path: d.paths[0],
+            }
+          : null,
+      );
+    };
+    const cached = isStash
+      ? cachedStashDetails(repo.root, selected.oid)
+      : undefined;
+    if (cached) {
+      apply(cached);
+      return;
+    }
     setDetails(emptyDetails);
     setHistorySelection(null);
-    const timer = setTimeout(() => {
-      call<Details>("commit_details", {
-        stash:
-          repo.stashes?.some((stash) => stash.oid === selected.oid) ?? false,
-        root: repo.root,
-        oid: selected.oid,
-        parent,
-      })
-        .then((d) => {
-          if (!active) return;
-          setDetails(d);
-          setHistorySelection(
-            d.paths[0]
-              ? {
-                  source: "commit",
-                  oid: d.file_oids?.[d.paths[0]] ?? selected.oid,
-                  parent: d.file_oids?.[d.paths[0]] ? null : d.parent,
-                  path: d.paths[0],
-                }
-              : null,
-          );
-        })
-        .catch((e) => {
-          if (active) report(e);
-        });
-    }, 35);
+    const load = () => {
+      const request = isStash
+        ? loadStashDetails(repo.root, selected.oid)
+        : call<Details>("commit_details", {
+            root: repo.root,
+            oid: selected.oid,
+            parent,
+            stash: false,
+          });
+      void request.then(apply).catch((e) => {
+        if (active) report(e);
+      });
+    };
+    const timer = isStash ? undefined : setTimeout(load, 35);
+    if (isStash) load();
     return () => {
       active = false;
       clearTimeout(timer);
