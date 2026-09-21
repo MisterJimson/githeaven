@@ -31,14 +31,20 @@ it("keeps large ref lists bounded while allowing scrolling to remote branches", 
   );
   expect(screen.getAllByRole("button").length).toBeLessThan(50);
   fireEvent.click(screen.getByRole("button", { name: "branch-0" }));
-  expect(onFilter).toHaveBeenLastCalledWith("local-0");
+  expect(onFilter).toHaveBeenLastCalledWith(
+    "local-0",
+    expect.objectContaining({ oid: "local-0" }),
+  );
   const list = screen.getByLabelText("Branches and tags");
   list.scrollTop = 22026;
   fireEvent.scroll(list);
   fireEvent.click(
     await screen.findByRole("button", { name: "origin/branch-0" }),
   );
-  expect(onFilter).toHaveBeenLastCalledWith("remote-0");
+  expect(onFilter).toHaveBeenLastCalledWith(
+    "remote-0",
+    expect.objectContaining({ oid: "remote-0" }),
+  );
   expect(screen.getAllByRole("button").length).toBeLessThan(50);
 });
 
@@ -67,7 +73,10 @@ it("filters and collapses branches and only checks out on double click", async (
   });
   expect(screen.queryByRole("button", { name: "main" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "feature" }));
-  expect(onFilter).toHaveBeenLastCalledWith("two");
+  expect(onFilter).toHaveBeenLastCalledWith(
+    "two",
+    expect.objectContaining({ oid: "two" }),
+  );
   expect(onCheckout).not.toHaveBeenCalled();
   fireEvent.doubleClick(screen.getByRole("button", { name: "feature" }));
   expect(onCheckout).toHaveBeenLastCalledWith(refs[1]);

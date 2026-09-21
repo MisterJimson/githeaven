@@ -35,7 +35,7 @@ export const BranchSidebar = memo(function BranchSidebar({
   commitCount: number;
   branch: string;
   branchFilter: string;
-  onFilter: (oid: string) => void;
+  onFilter: (oid: string, reference?: Reference) => void;
   onCheckout?: (ref: Reference) => void;
   onDelete?: (ref: Reference, force?: boolean) => Promise<void>;
   busy?: boolean;
@@ -246,7 +246,7 @@ export const BranchSidebar = memo(function BranchSidebar({
                           y: event.clientY,
                         });
                     }}
-                    onClick={() => onFilter(row.ref.oid)}
+                    onClick={() => onFilter(row.ref.oid, row.ref)}
                     onDoubleClick={() =>
                       !busy && row.ref.kind !== "tag" && onCheckout?.(row.ref)
                     }

@@ -1,3 +1,4 @@
+import { resolveBranchTip } from "./graph";
 import { cachedStashDetails, loadStashDetails } from "./stashDetails";
 import { PublishBranch, type PublishTarget } from "./PublishBranch";
 import { NewBranch } from "./NewBranch";
@@ -128,6 +129,7 @@ interface ProjectView {
   file: FileSession | null;
   filter: string;
   branchFilter: string;
+  activeRef: Reference | null;
   message: string;
   description: string;
   reviewKind: "working" | "commit";
@@ -455,6 +457,7 @@ export function App() {
           : null,
         filter,
         branchFilter,
+        activeRef,
         message,
         description,
         reviewKind,
@@ -495,7 +498,7 @@ export function App() {
       ]);
       repoRef.current = next;
       setRepo(next);
-      setActiveRef(null);
+      setActiveRef(cached?.activeRef ?? null);
       setCheckoutPrompt(null);
       setWatchWarning(next.watch_warning);
       setOpenPath(next.root);
@@ -1016,11 +1019,17 @@ export function App() {
     setReviewKind("working");
     setDiffOpen(false);
   }, []);
-  const filterBranch = useCallback((oid: string) => {
-    setActiveRef(null);
-    setBranchFilter(oid);
-    setDiffOpen(false);
-  }, []);
+  const selectedBranchTip = resolveBranchTip(repo, activeRef, branchFilter);
+  const filterBranch = useCallback(
+    (oid: string, reference?: Reference) => {
+      setActiveRef(
+        reference ?? repo?.refs?.find((ref) => ref.oid === oid) ?? null,
+      );
+      setBranchFilter(oid);
+      setDiffOpen(false);
+    },
+    [repo?.refs],
+  );
   const deleteBranch = async (ref: Reference, force = false) => {
     if (!repo) return;
     setBusy("Deleting branch");
@@ -1431,7 +1440,10 @@ export function App() {
       } else if (item.kind === "branch") {
         setMode("history");
         setFilter("");
-        filterBranch(item.value);
+        filterBranch(
+          item.value,
+          repo?.refs?.find((ref) => `ref:${ref.kind}:${ref.name}` === item.id),
+        );
       } else if (item.kind === "commit") {
         const commit = repo?.commits?.find((entry) => entry.oid === item.value);
         if (commit) {
@@ -1730,7 +1742,7 @@ export function App() {
                             }
                             commitCount={repo.commits?.length ?? 0}
                             branch={repo.branch}
-                            branchFilter={branchFilter}
+                            branchFilter={selectedBranchTip}
                             onFilter={filterBranch}
                             onCheckout={checkoutBranch}
                             onDelete={deleteBranch}
@@ -1780,7 +1792,7 @@ export function App() {
                                   : null
                               }
                               onStashAction={handleStashAction}
-                              branchTip={branchFilter}
+                              branchTip={selectedBranchTip}
                               search={filter}
                               refs={repo.refs ?? []}
                               selected={
@@ -1789,8 +1801,7 @@ export function App() {
                                   : undefined
                               }
                               onSelectRef={(ref) => {
-                                filterBranch(ref.oid);
-                                setActiveRef(ref);
+                                filterBranch(ref.oid, ref);
                               }}
                               onCheckoutRef={checkoutBranch}
                               onDeleteRef={deleteBranch}

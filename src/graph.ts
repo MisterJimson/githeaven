@@ -1,4 +1,4 @@
-import type { Commit } from "./types";
+import type { Commit, Reference, Snapshot } from "./types";
 export const GRAPH_ROW_HEIGHT = 28;
 export const GRAPH_ROW_CENTER = GRAPH_ROW_HEIGHT / 2;
 
@@ -89,4 +89,20 @@ export function graphLaneX(lane: number, lanes: number, width: number): number {
     Math.min(16, (width - 44) / Math.max(1, lanes - 1)),
   );
   return 22 + lane * step;
+}
+
+/** Resolve selection by ref identity so new commits never leave a stale filter. */
+export function resolveBranchTip(
+  repo: Pick<Snapshot, "refs" | "head" | "branch"> | null,
+  selected: Reference | null,
+  fallback: string,
+): string {
+  if (!selected || !repo) return fallback;
+  if (selected.kind === "local" && selected.name === repo.branch)
+    return repo.head ?? "";
+  return (
+    repo.refs?.find(
+      (ref) => ref.kind === selected.kind && ref.name === selected.name,
+    )?.oid ?? ""
+  );
 }

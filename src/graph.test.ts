@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutGraph, reachable, graphLaneX } from "./graph";
+import { layoutGraph, reachable, graphLaneX, resolveBranchTip } from "./graph";
 import type { Commit } from "./types";
 const c = (oid: string, ...parents: string[]): Commit => ({
   oid,
@@ -61,4 +61,37 @@ it("keeps at least 12 pixels between lanes in narrow graph columns", () => {
 it("caps lane spacing at 16 pixels and scales between the bounds", () => {
   expect(graphLaneX(1, 10, 1000) - graphLaneX(0, 10, 1000)).toBe(16);
   expect(graphLaneX(1, 10, 170) - graphLaneX(0, 10, 170)).toBe(14);
+});
+
+it("follows an advancing branch and includes shared ancestry across interleaved branches", () => {
+  const selected = { name: "feature", kind: "local" as const, oid: "old" };
+  const commits = [
+    c("new", "old"),
+    c("old", "main"),
+    c("other", "base"),
+    c("main", "base"),
+    c("base"),
+  ];
+  const tip = resolveBranchTip(
+    { branch: "feature", head: "new", refs: [selected] },
+    selected,
+    "old",
+  );
+  expect([...reachable(commits, tip)]).toEqual(["new", "old", "main", "base"]);
+});
+
+it("tracks remote refs by name and kind and clears deleted branch filters", () => {
+  const selected = {
+    name: "origin/feature",
+    kind: "remote" as const,
+    oid: "old",
+  };
+  const repo = {
+    branch: "main",
+    head: "main",
+    refs: [{ ...selected, oid: "new" }],
+  };
+  expect(resolveBranchTip(repo, selected, "old")).toBe("new");
+  expect(resolveBranchTip({ ...repo, refs: [] }, selected, "old")).toBe("");
+  expect(resolveBranchTip(repo, null, "")).toBe("");
 });
