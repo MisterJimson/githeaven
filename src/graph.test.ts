@@ -34,10 +34,10 @@ describe("history lanes", () => {
   });
 });
 
-it("keeps new tips on the left and preserves connections at every row boundary", () => {
+it("keeps independent tips beside reserved history lanes and preserves row connections", () => {
   const commits = [c("a", "base"), c("b", "base"), c("c", "base"), c("base")];
   const rows = layoutGraph(commits);
-  expect(rows.map((row) => row.lane)).toEqual([0, 0, 0, 0]);
+  expect(rows.map((row) => row.lane)).toEqual([0, 1, 1, 0]);
   for (let i = 1; i < rows.length; i++) {
     expect(
       [...new Set(rows[i - 1].below.map((edge) => edge.to))].sort(),
@@ -94,4 +94,26 @@ it("tracks remote refs by name and kind and clears deleted branch filters", () =
   expect(resolveBranchTip(repo, selected, "old")).toBe("new");
   expect(resolveBranchTip({ ...repo, refs: [] }, selected, "old")).toBe("");
   expect(resolveBranchTip(repo, null, "")).toBe("");
+});
+
+it("keeps main straight while an unrelated branch runs beside its pending ancestors", () => {
+  const rows = layoutGraph([
+    c("head", "main"),
+    c("main", "base"),
+    c("other", "other-parent"),
+    c("other-parent", "base"),
+    c("base"),
+  ]);
+  expect(rows.map((row) => row.lane)).toEqual([0, 0, 1, 1, 0]);
+  expect(rows[2].above).toEqual([{ from: 0, to: 0, color: rows[1].color }]);
+  expect(rows[2].below).toContainEqual({
+    from: 0,
+    to: 0,
+    color: rows[1].color,
+  });
+  expect(rows[3].below).toContainEqual({
+    from: 1,
+    to: 0,
+    color: rows[4].color,
+  });
 });

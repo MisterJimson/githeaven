@@ -21,23 +21,14 @@ export function layoutGraph(commits: Commit[]): GraphRow[] {
     let lane = lanes.findIndex((l) => l.oid === commit.oid);
     const previous = [...lanes];
     if (lane < 0) {
-      // Keep newly encountered branch tips beside the active history instead
-      // of placing them beyond every long-running connection. Keep WIP's
-      // pending HEAD in the first lane until it is reached.
-      lane =
-        commits[0]?.oid === "worktree" &&
-        lanes[0]?.oid === commits[0].parents[0]
-          ? 1
-          : 0;
-      lane = Math.min(lane, lanes.length);
-      lanes.splice(lane, 0, { oid: commit.oid, color: nextColor++ % 6 });
+      // A pending ancestor owns its lane until reached. New tips must sit
+      // beside those paths, never displace them and appear to continue them.
+      lane = lanes.length;
+      lanes.push({ oid: commit.oid, color: nextColor++ % 6 });
     }
-    const currentLane = new Map(
-      lanes.map((entry, index) => [entry.oid, index]),
-    );
     const above: Edge[] = previous.map((entry, index) => ({
       from: index,
-      to: currentLane.get(entry.oid)!,
+      to: index,
       color: entry.color,
     }));
     const color = lanes[lane].color;
