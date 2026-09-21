@@ -82,8 +82,11 @@ export function reachable(commits: Commit[], head: string): Set<string> {
   return seen;
 }
 
-/** Fit every lane inside the column without scaling avatars or row heights. */
+/** Compress lanes gently, but keep crowded graphs readable at narrow widths. */
 export function graphLaneX(lane: number, lanes: number, width: number): number {
-  const step = Math.min(16, Math.max(0, width - 44) / Math.max(1, lanes - 1));
+  const step = Math.max(
+    12,
+    Math.min(16, (width - 44) / Math.max(1, lanes - 1)),
+  );
   return 22 + lane * step;
 }

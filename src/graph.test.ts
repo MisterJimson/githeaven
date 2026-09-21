@@ -47,13 +47,18 @@ it("keeps new tips on the left and preserves connections at every row boundary",
   expect(rows[1].below[0].to).toBe(rows[1].below[1].to);
 });
 
-it("keeps nodes inside narrow graph columns without changing topology", () => {
+it("keeps at least 12 pixels between lanes in narrow graph columns", () => {
   for (const width of [60, 140, 280]) {
     const xs = Array.from({ length: 64 }, (_, lane) =>
       graphLaneX(lane, 64, width),
     );
     expect(xs[0]).toBe(22);
-    expect(xs.at(-1)).toBeLessThanOrEqual(width - 22);
+    expect(xs[1] - xs[0]).toBe(12);
     expect(new Set(xs).size).toBe(64);
   }
+});
+
+it("caps lane spacing at 16 pixels and scales between the bounds", () => {
+  expect(graphLaneX(1, 10, 1000) - graphLaneX(0, 10, 1000)).toBe(16);
+  expect(graphLaneX(1, 10, 170) - graphLaneX(0, 10, 170)).toBe(14);
 });
