@@ -19,15 +19,27 @@ export function layoutGraph(commits: Commit[]): GraphRow[] {
   let nextColor = 0;
   return commits.map((commit) => {
     let lane = lanes.findIndex((l) => l.oid === commit.oid);
-    const above: Edge[] = lanes.map((l, i) => ({
-      from: i,
-      to: i,
-      color: l.color,
-    }));
+    const previous = [...lanes];
     if (lane < 0) {
-      lane = lanes.length;
-      lanes.push({ oid: commit.oid, color: nextColor++ % 6 });
+      // Keep newly encountered branch tips beside the active history instead
+      // of placing them beyond every long-running connection. Keep WIP's
+      // pending HEAD in the first lane until it is reached.
+      lane =
+        commits[0]?.oid === "worktree" &&
+        lanes[0]?.oid === commits[0].parents[0]
+          ? 1
+          : 0;
+      lane = Math.min(lane, lanes.length);
+      lanes.splice(lane, 0, { oid: commit.oid, color: nextColor++ % 6 });
     }
+    const currentLane = new Map(
+      lanes.map((entry, index) => [entry.oid, index]),
+    );
+    const above: Edge[] = previous.map((entry, index) => ({
+      from: index,
+      to: currentLane.get(entry.oid)!,
+      color: entry.color,
+    }));
     const color = lanes[lane].color;
     const before = [...lanes];
     lanes.splice(lane, 1);
@@ -68,4 +80,10 @@ export function reachable(commits: Commit[], head: string): Set<string> {
     todo.push(...(byId.get(id)?.parents ?? []));
   }
   return seen;
+}
+
+/** Fit every lane inside the column without scaling avatars or row heights. */
+export function graphLaneX(lane: number, lanes: number, width: number): number {
+  const step = Math.min(16, Math.max(0, width - 44) / Math.max(1, lanes - 1));
+  return 22 + lane * step;
 }

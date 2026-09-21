@@ -14,6 +14,7 @@ import { CommitNode } from "./CommitNode";
 import { startSpan } from "./performance";
 import {
   layoutGraph,
+  graphLaneX,
   reachable,
   GRAPH_ROW_HEIGHT,
   GRAPH_ROW_CENTER,
@@ -195,6 +196,7 @@ export const History = memo(function History({
   );
   const branchWidth = widths.branch ?? 160;
   const graphWidth = widths.graph ?? Math.min(280, lanes * 16 + 30);
+  const laneX = (lane: number) => graphLaneX(lane, lanes, graphWidth);
   const columns = `${branchWidth}px ${graphWidth}px minmax(180px, 1fr)`;
   const minWidth = branchWidth + graphWidth + 180 + 10;
   const virtual = useVirtualizer({
@@ -483,7 +485,7 @@ export const History = memo(function History({
                 >
                   {commitRefs.length > 0 && (
                     <path
-                      d={`M 0 ${GRAPH_ROW_CENTER} H ${22 + row.lane * 16}`}
+                      d={`M 0 ${GRAPH_ROW_CENTER} H ${laneX(row.lane)}`}
                       stroke={rowColor}
                       opacity={checkedOut ? 1 : 0.6}
                       strokeWidth={checkedOut ? 3 : 1.4}
@@ -492,7 +494,8 @@ export const History = memo(function History({
                   {row.above.map((e, i) => (
                     <path
                       key={`a${i}`}
-                      d={`M ${22 + e.from * 16} 0 L ${22 + e.to * 16} ${GRAPH_ROW_CENTER}`}
+                      d={`M ${laneX(e.from)} 0 C ${laneX(e.from)} ${GRAPH_ROW_HEIGHT * 0.25}, ${laneX(e.to)} ${GRAPH_ROW_HEIGHT * 0.25}, ${laneX(e.to)} ${GRAPH_ROW_CENTER}`}
+                      opacity={e.to === row.lane ? 1 : 0.4}
                       stroke={colors[e.color]}
                       strokeDasharray={
                         hasWorkingChanges &&
@@ -507,7 +510,8 @@ export const History = memo(function History({
                   {row.below.map((e, i) => (
                     <path
                       key={`b${i}`}
-                      d={`M ${22 + e.from * 16} ${GRAPH_ROW_CENTER} C ${22 + e.from * 16} ${GRAPH_ROW_HEIGHT * 0.78}, ${22 + e.to * 16} ${GRAPH_ROW_HEIGHT * 0.73}, ${22 + e.to * 16} ${GRAPH_ROW_HEIGHT}`}
+                      opacity={e.from === row.lane ? 1 : 0.4}
+                      d={`M ${laneX(e.from)} ${GRAPH_ROW_CENTER} C ${laneX(e.from)} ${GRAPH_ROW_HEIGHT * 0.78}, ${laneX(e.to)} ${GRAPH_ROW_HEIGHT * 0.73}, ${laneX(e.to)} ${GRAPH_ROW_HEIGHT}`}
                       stroke={colors[e.color]}
                       strokeDasharray={
                         hasWorkingChanges &&
@@ -521,7 +525,7 @@ export const History = memo(function History({
                   ))}
                   {isWorking ? (
                     <circle
-                      cx={22 + row.lane * 16}
+                      cx={laneX(row.lane)}
                       cy={GRAPH_ROW_CENTER}
                       r={5}
                       fill="var(--canvas)"
@@ -532,7 +536,7 @@ export const History = memo(function History({
                   ) : stash ? (
                     <g
                       aria-label="Stash"
-                      transform={`translate(${22 + row.lane * 16}, ${GRAPH_ROW_CENTER})`}
+                      transform={`translate(${laneX(row.lane)}, ${GRAPH_ROW_CENTER})`}
                     >
                       <rect
                         x={-7}
@@ -554,7 +558,7 @@ export const History = memo(function History({
                     <CommitNode
                       root={root}
                       commit={commit}
-                      x={22 + row.lane * 16}
+                      x={laneX(row.lane)}
                       color={rowColor}
                     />
                   )}

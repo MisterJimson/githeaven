@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutGraph, reachable } from "./graph";
+import { layoutGraph, reachable, graphLaneX } from "./graph";
 import type { Commit } from "./types";
 const c = (oid: string, ...parents: string[]): Commit => ({
   oid,
@@ -32,4 +32,28 @@ describe("history lanes", () => {
       "r",
     ]);
   });
+});
+
+it("keeps new tips on the left and preserves connections at every row boundary", () => {
+  const commits = [c("a", "base"), c("b", "base"), c("c", "base"), c("base")];
+  const rows = layoutGraph(commits);
+  expect(rows.map((row) => row.lane)).toEqual([0, 0, 0, 0]);
+  for (let i = 1; i < rows.length; i++) {
+    expect(
+      [...new Set(rows[i - 1].below.map((edge) => edge.to))].sort(),
+    ).toEqual(rows[i].above.map((edge) => edge.from).sort());
+  }
+  expect(rows.at(-1)?.below).toEqual([]);
+  expect(rows[1].below[0].to).toBe(rows[1].below[1].to);
+});
+
+it("keeps nodes inside narrow graph columns without changing topology", () => {
+  for (const width of [60, 140, 280]) {
+    const xs = Array.from({ length: 64 }, (_, lane) =>
+      graphLaneX(lane, 64, width),
+    );
+    expect(xs[0]).toBe(22);
+    expect(xs.at(-1)).toBeLessThanOrEqual(width - 22);
+    expect(new Set(xs).size).toBe(64);
+  }
 });
