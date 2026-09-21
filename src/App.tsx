@@ -2238,7 +2238,7 @@ export function App() {
                                   autoCapitalize="off"
                                   autoCorrect="off"
                                   autoComplete="off"
-                                  spellCheck={false}
+                                  spellCheck={true}
                                   placeholder="Commit summary"
                                   value={message}
                                   onChange={(event) =>
@@ -2250,7 +2250,7 @@ export function App() {
                                   autoCapitalize="off"
                                   autoCorrect="off"
                                   autoComplete="off"
-                                  spellCheck={false}
+                                  spellCheck={true}
                                   placeholder="Description (optional)"
                                   value={description}
                                   onChange={(event) =>
