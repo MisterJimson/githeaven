@@ -1773,3 +1773,23 @@ it("opens saved untracked stash files using their own snapshot", async () => {
     ),
   );
 });
+
+it("Escape closes the diff before clearing the selected branch, without an all-branches button", async () => {
+  await openWorkspace({
+    changes: [modifiedChange],
+    refs: [{ name: "topic", kind: "local", oid: "abc" }],
+  });
+  expect(screen.queryByRole("button", { name: /All branches/ })).toBeNull();
+  const branch = screen.getByRole("button", { name: "topic" });
+  fireEvent.click(branch);
+  expect(branch.classList.contains("filtered")).toBe(true);
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("button", { name: "Back to graph" })).toBeNull();
+  expect(branch.classList.contains("filtered")).toBe(true);
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(branch.classList.contains("filtered")).toBe(false);
+  fireEvent.click(branch);
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(branch.classList.contains("filtered")).toBe(false);
+});

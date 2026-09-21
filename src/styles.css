@@ -1613,14 +1613,6 @@ kbd {
   background: transparent;
 }
 
-.sidebar-link.branch-all {
-  height: 24px;
-  min-height: 24px;
-  margin: 2px 6px;
-  padding: 0 8px;
-  font-size: 11px;
-  border-radius: 3px;
-}
 .branch-row > svg {
   flex-shrink: 0;
 }

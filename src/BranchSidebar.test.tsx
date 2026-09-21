@@ -23,7 +23,6 @@ it("keeps large ref lists bounded while allowing scrolling to remote branches", 
   render(
     <BranchSidebar
       refs={refs}
-      commitCount={500}
       branch="main"
       branchFilter=""
       onFilter={onFilter}
@@ -61,7 +60,6 @@ it("filters and collapses branches and only checks out on double click", async (
   render(
     <BranchSidebar
       refs={refs}
-      commitCount={3}
       branch="main"
       branchFilter=""
       onFilter={onFilter}
@@ -92,7 +90,6 @@ it("opens delete as the first context action without selecting the branch", () =
   render(
     <BranchSidebar
       refs={[{ name: "feature", kind: "local", oid: "abc" }]}
-      commitCount={1}
       branch="main"
       branchFilter=""
       onFilter={onFilter}
@@ -121,7 +118,6 @@ it("keeps section headers mounted and pins them while scrolling", () => {
         oid: `${i}`,
         kind: "local" as const,
       }))}
-      commitCount={100}
       branch="main"
       branchFilter=""
       onFilter={vi.fn()}
@@ -150,7 +146,6 @@ it("offers stash operations and confirms deletion", () => {
         },
       ]}
       onStashAction={action}
-      commitCount={0}
       branch="main"
       branchFilter=""
       onFilter={vi.fn()}

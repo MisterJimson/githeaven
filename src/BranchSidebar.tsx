@@ -16,7 +16,6 @@ export const BranchSidebar = memo(function BranchSidebar({
   stashes = [],
   onStashAction,
   onSelectStash,
-  commitCount,
   branch,
   branchFilter,
   onFilter,
@@ -32,7 +31,6 @@ export const BranchSidebar = memo(function BranchSidebar({
     stash: Stash,
     action: "apply" | "pop" | "delete",
   ) => Promise<void>;
-  commitCount: number;
   branch: string;
   branchFilter: string;
   onFilter: (oid: string, reference?: Reference) => void;
@@ -150,13 +148,6 @@ export const BranchSidebar = memo(function BranchSidebar({
           if (scroll.current) scroll.current.scrollTop = 0;
         }}
       />
-      <button
-        className={`sidebar-link branch-all ${!branchFilter ? "active" : ""}`}
-        onClick={() => onFilter("")}
-      >
-        <Layers size={15} />
-        All branches<span>{commitCount}</span>
-      </button>
       <div
         className="branch-scroll"
         ref={scroll}

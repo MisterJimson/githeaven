@@ -859,15 +859,22 @@ export function App() {
         event.altKey ||
         event.shiftKey ||
         mode !== "history" ||
-        !diffOpen ||
+        (!diffOpen && !branchFilter && !activeRef) ||
         busy ||
         pending ||
         checkoutPrompt ||
         quickOpen ||
-        showPerf
+        showPerf ||
+        newBranch ||
+        publishTarget
       )
         return;
       event.preventDefault();
+      if (!diffOpen) {
+        setBranchFilter("");
+        setActiveRef(null);
+        return;
+      }
       const close = () => {
         setDiffOpen(false);
         setInlineEdit(null);
@@ -888,6 +895,10 @@ export function App() {
     quickOpen,
     showPerf,
     reviewKind,
+    branchFilter,
+    activeRef,
+    newBranch,
+    publishTarget,
   ]);
   useEffect(() => {
     if (notice) {
@@ -1742,7 +1753,6 @@ export function App() {
                                 }));
                               })
                             }
-                            commitCount={repo.commits?.length ?? 0}
                             branch={repo.branch}
                             branchFilter={selectedBranchTip}
                             onFilter={filterBranch}
