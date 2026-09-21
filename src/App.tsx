@@ -1,3 +1,4 @@
+import { useAppZoom } from "./appZoom";
 import { resolveBranchTip } from "./graph";
 import { cachedStashDetails, loadStashDetails } from "./stashDetails";
 import { PublishBranch, type PublishTarget } from "./PublishBranch";
@@ -137,6 +138,7 @@ interface ProjectView {
 }
 
 export function App() {
+  useAppZoom();
   const [repo, setRepo] = useState<Snapshot | null>(null);
   const repoRef = useRef(repo);
   repoRef.current = repo;
