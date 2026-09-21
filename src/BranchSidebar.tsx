@@ -1,8 +1,8 @@
 import { StashMenu } from "./StashMenu";
 import { BranchContextMenu } from "./BranchContextMenu";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
-import { Layers, ChevronDown, GitBranch, Check } from "lucide-react";
+import { memo, useEffect, useMemo, useState } from "react";
+import { DockedSections, type DockGroup } from "./DockedSections";
+import { Layers, GitBranch, Check } from "lucide-react";
 import type { Reference, Stash } from "./types";
 
 type Row =
@@ -49,8 +49,6 @@ export const BranchSidebar = memo(function BranchSidebar({
     x: number;
     y: number;
   } | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const scroll = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   useEffect(() => {
@@ -111,31 +109,11 @@ export const BranchSidebar = memo(function BranchSidebar({
     }
     return rows;
   }, [refs, stashes, query, collapsed]);
-  const headers = rows.flatMap((row, index) =>
-    row.type === "header" ? [index] : [],
-  );
-  const virtual = useVirtualizer({
-    count: rows.length,
-    rangeExtractor: (range) =>
-      [...new Set([...headers, ...defaultRangeExtractor(range)])].sort(
-        (a, b) => a - b,
-      ),
-    getScrollElement: () => scroll.current,
-    getItemKey: (index) => rows[index].key,
-    estimateSize: (index) => (rows[index].type === "header" ? 26 : 22),
-    overscan: 6,
-    initialRect: { width: 223, height: 600 },
-  });
-  useEffect(() => {
-    if (!activeRef) return;
-    const index = rows.findIndex(
-      (row) =>
-        row.type === "ref" &&
-        row.ref.name === activeRef.name &&
-        row.ref.kind === activeRef.kind,
-    );
-    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" });
-  }, [activeRef, rows, virtual]);
+  const groups: DockGroup<Exclude<Row, { type: "header" }>>[] = [];
+  for (const row of rows) {
+    if (row.type === "header") groups.push({ ...row, items: [] });
+    else groups.at(-1)!.items.push(row);
+  }
   return (
     <>
       <input
@@ -145,115 +123,69 @@ export const BranchSidebar = memo(function BranchSidebar({
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
-          if (scroll.current) scroll.current.scrollTop = 0;
         }}
       />
-      <div
-        className="branch-scroll"
-        ref={scroll}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-        aria-label="Branches and tags"
-      >
-        <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
-          {virtual.getVirtualItems().map((item) => {
-            const row = rows[item.index];
-            return (
-              <div
-                key={row.key}
-                style={{
-                  position: "absolute",
-                  top:
-                    row.type === "header"
-                      ? Math.max(
-                          item.start,
-                          scrollTop + headers.indexOf(item.index) * 26,
-                        )
-                      : item.start,
-                  zIndex: row.type === "header" ? 2 : undefined,
-                  background:
-                    row.type === "header" ? "var(--panel)" : undefined,
-                  height: item.size,
-                  width: "100%",
-                }}
-              >
-                {row.type === "header" ? (
-                  <button
-                    className="section-label branch-group"
-                    aria-expanded={!collapsed[row.key]}
-                    onClick={() =>
-                      setCollapsed((current) => ({
-                        ...current,
-                        [row.key]: !current[row.key],
-                      }))
-                    }
-                    style={{ height: "100%" }}
-                  >
-                    <span>
-                      <ChevronDown
-                        size={11}
-                        style={{
-                          transform: collapsed[row.key]
-                            ? "rotate(-90deg)"
-                            : undefined,
-                        }}
-                      />
-                      {row.title}
-                    </span>
-                    <span>{row.count}</span>
-                  </button>
-                ) : row.type === "stash" ? (
-                  <button
-                    className="branch-row"
-                    title={`${row.stash.name}: ${row.stash.message}`}
-                    onClick={() => onSelectStash?.(row.stash)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      if (!busy && onStashAction)
-                        setStashMenu({
-                          stash: row.stash,
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                    }}
-                  >
-                    <Layers size={13} />
-                    <span>
-                      {row.stash.name}: {row.stash.message}
-                    </span>
-                  </button>
-                ) : row.type === "empty" ? (
-                  <span className="no-refs">{row.title}</span>
-                ) : (
-                  <button
-                    className={`branch-row ${(activeRef ? activeRef.name === row.ref.name && activeRef.kind === row.ref.kind : branchFilter === row.ref.oid) ? "filtered" : ""}`}
-                    title={`${row.ref.name}${row.ref.kind !== "tag" && onCheckout ? " — Double-click to check out" : ""}`}
-                    onContextMenu={(event) => {
-                      if (!onDelete || row.ref.kind === "tag") return;
-                      event.preventDefault();
-                      if (!busy)
-                        setContext({
-                          ref: row.ref,
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                    }}
-                    onClick={() => onFilter(row.ref.oid, row.ref)}
-                    onDoubleClick={() =>
-                      !busy && row.ref.kind !== "tag" && onCheckout?.(row.ref)
-                    }
-                  >
-                    <GitBranch size={13} />
-                    <span>{row.ref.name}</span>
-                    {row.ref.kind === "local" && row.ref.name === branch && (
-                      <Check size={12} />
-                    )}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <DockedSections
+        groups={groups}
+        collapsed={collapsed}
+        onToggle={(key) =>
+          setCollapsed((current) => ({ ...current, [key]: !current[key] }))
+        }
+        selectedKey={
+          activeRef ? `${activeRef.kind}:${activeRef.name}` : undefined
+        }
+        renderItem={(row) =>
+          row.type === "stash" ? (
+            <button
+              className="branch-row"
+              title={`${row.stash.name}: ${row.stash.message}`}
+              onClick={() => onSelectStash?.(row.stash)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                if (!busy && onStashAction)
+                  setStashMenu({
+                    stash: row.stash,
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+              }}
+            >
+              <Layers size={13} />
+              <span>
+                {row.stash.name}: {row.stash.message}
+              </span>
+            </button>
+          ) : row.type === "empty" ? (
+            <span className="no-refs">{row.title}</span>
+          ) : (
+            <button
+              className={`branch-row ${(activeRef ? activeRef.name === row.ref.name && activeRef.kind === row.ref.kind : branchFilter === row.ref.oid) ? "filtered" : ""}`}
+              title={`${row.ref.name}${row.ref.kind !== "tag" && onCheckout ? " — Double-click to check out" : ""}`}
+              onContextMenu={(event) => {
+                if (!onDelete || row.ref.kind === "tag") return;
+                event.preventDefault();
+                if (!busy)
+                  setContext({
+                    ref: row.ref,
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+              }}
+              onClick={() => onFilter(row.ref.oid, row.ref)}
+              onDoubleClick={() =>
+                !busy && row.ref.kind !== "tag" && onCheckout?.(row.ref)
+              }
+            >
+              <GitBranch size={13} />
+              <span>{row.ref.name}</span>
+              {row.ref.kind === "local" && row.ref.name === branch && (
+                <Check size={12} />
+              )}
+            </button>
+          )
+        }
+      />
+
       {stashMenu && onStashAction && (
         <StashMenu
           {...stashMenu}

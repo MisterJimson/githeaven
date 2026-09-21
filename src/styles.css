@@ -1919,3 +1919,36 @@ kbd {
 .change-file-views {
   user-select: none;
 }
+
+.branch-docks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.branch-dock {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.branch-dock > .branch-group {
+  height: 26px;
+  flex: 0 0 26px;
+}
+.dock-list {
+  flex: 1;
+  min-height: 22px;
+  overflow: auto;
+}
+.dock-resizer {
+  height: 5px;
+  flex: 0 0 5px;
+  cursor: row-resize;
+  touch-action: none;
+  border-top: 1px solid var(--border);
+}
+.dock-resizer:hover,
+.dock-resizer:focus-visible {
+  background: var(--mint);
+}

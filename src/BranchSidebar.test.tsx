@@ -28,14 +28,14 @@ it("keeps large ref lists bounded while allowing scrolling to remote branches", 
       onFilter={onFilter}
     />,
   );
-  expect(screen.getAllByRole("button").length).toBeLessThan(50);
+  expect(screen.getAllByRole("button").length).toBeLessThan(80);
   fireEvent.click(screen.getByRole("button", { name: "branch-0" }));
   expect(onFilter).toHaveBeenLastCalledWith(
     "local-0",
     expect.objectContaining({ oid: "local-0" }),
   );
-  const list = screen.getByLabelText("Branches and tags");
-  list.scrollTop = 22026;
+  const list = screen.getByLabelText("LOCAL BRANCHES list");
+  list.scrollTop = 900;
   fireEvent.scroll(list);
   fireEvent.click(
     await screen.findByRole("button", { name: "origin/branch-0" }),
@@ -44,7 +44,7 @@ it("keeps large ref lists bounded while allowing scrolling to remote branches", 
     "remote-0",
     expect.objectContaining({ oid: "remote-0" }),
   );
-  expect(screen.getAllByRole("button").length).toBeLessThan(50);
+  expect(screen.getAllByRole("button").length).toBeLessThan(80);
 });
 
 it("filters and collapses branches and only checks out on double click", async () => {
@@ -123,10 +123,10 @@ it("keeps section headers mounted and pins them while scrolling", () => {
       onFilter={vi.fn()}
     />,
   );
-  const scroller = screen.getByLabelText("Branches and tags");
+  const scroller = screen.getByLabelText("LOCAL BRANCHES list");
   fireEvent.scroll(scroller, { target: { scrollTop: 900 } });
   const header = screen.getByRole("button", { name: /LOCAL BRANCHES/ });
-  expect(header.parentElement?.style.top).toBe("900px");
+  expect(scroller.contains(header)).toBe(false);
   fireEvent.click(header);
   expect(header.getAttribute("aria-expanded")).toBe("false");
 });
@@ -165,4 +165,36 @@ it("offers stash operations and confirms deletion", () => {
     expect.objectContaining({ oid: "a".repeat(40) }),
     "delete",
   );
+});
+
+it("resizes docked sections and remembers their proportions", () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    height: 200,
+  } as DOMRect);
+  const props = {
+    refs: [
+      { name: "main", kind: "local" as const, oid: "a" },
+      { name: "origin/main", kind: "remote" as const, oid: "a" },
+    ],
+    branch: "main",
+    branchFilter: "",
+    onFilter: vi.fn(),
+  };
+  const { unmount } = render(<BranchSidebar {...props} />);
+  const splitter = screen.getByRole("separator", {
+    name: "Resize LOCAL BRANCHES and REMOTES",
+  });
+  fireEvent.keyDown(splitter, { key: "ArrowDown" });
+  const saved = JSON.parse(
+    localStorage.getItem("githeaven.sidebar-section-heights")!,
+  );
+  expect(saved.local).toBeGreaterThan(saved.remote);
+  unmount();
+  render(<BranchSidebar {...props} />);
+  const local = screen.getByRole("button", { name: /LOCAL BRANCHES/ });
+  expect(local.parentElement?.style.flex).toBe(`${saved.local} 1 0px`);
+  fireEvent.click(local);
+  expect(screen.queryByLabelText("LOCAL BRANCHES list")).toBeNull();
+  expect(screen.getByLabelText("REMOTES list")).toBeTruthy();
+  localStorage.removeItem("githeaven.sidebar-section-heights");
 });
