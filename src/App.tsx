@@ -2236,6 +2236,9 @@ export function App() {
                                 <input
                                   aria-label="Commit summary"
                                   autoCapitalize="off"
+                                  autoCorrect="off"
+                                  autoComplete="off"
+                                  spellCheck={false}
                                   placeholder="Commit summary"
                                   value={message}
                                   onChange={(event) =>
@@ -2245,6 +2248,9 @@ export function App() {
                                 <textarea
                                   aria-label="Commit description"
                                   autoCapitalize="off"
+                                  autoCorrect="off"
+                                  autoComplete="off"
+                                  spellCheck={false}
                                   placeholder="Description (optional)"
                                   value={description}
                                   onChange={(event) =>
