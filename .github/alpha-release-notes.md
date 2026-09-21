@@ -1,11 +1,13 @@
-New in alpha.6:
+New in alpha.7:
 
-- Resizable graph columns, clearer checked-out branch connectors, and a floating jump-to-top button.
-- Branch selection dims unrelated history without rearranging the graph, with automatic reveal when needed.
-- Before/after image diffs and text previews/editing up to 10 MB.
-- Shared, cached GitHub avatars and compact links to open pull requests.
-- Branch context menu with local/remote deletion choices, confirmation, and an explicit override for unmerged local branches.
-- Push/Pull controls, a remembered push-after-commit option, improved contrast, and a cleaner sidebar.
+- Docked, resizable sidebar sections with independent scrolling and collapsible local branches, remotes, tags, and stashes.
+- Clearer graph lanes for separate histories, live branch highlighting, and Escape to clear branch selection after closing a diff.
+- macOS system typography and remembered app zoom with Command +/−; focused editor and diff viewers retain independent text zoom.
+- Create branches without losing working changes, fetch all remotes, and publish new branches with an upstream prompt.
+- Remote branch checkout fetches and fast-forwards the matching local branch, preserving divergent local commits.
+- Multi-file selection, discard with confirmation, and stashing from the working-files context menu.
+- Stashes in the graph and sidebar, including apply/pop/delete actions, saved untracked-file diffs, and faster cached previews.
+- Commit addition/deletion counts and branch context menus on graph badges.
 
 Early macOS alpha of Githeaven: a focused Git graph, staging and commit workspace, with an integrated file editor.
 
