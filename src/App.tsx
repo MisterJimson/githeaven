@@ -927,6 +927,26 @@ export function App() {
       ),
     [repo?.changes, stageOperations],
   );
+  const lastHead = useRef<{ root: string; oid: string | null } | null>(null);
+  useLayoutEffect(() => {
+    const previous = lastHead.current;
+    lastHead.current = repo ? { root: repo.root, oid: repo.head } : null;
+    if (
+      !repo ||
+      previous?.root !== repo.root ||
+      previous.oid === repo.head ||
+      indexPending ||
+      !diffOpen ||
+      reviewKind !== "working" ||
+      !changeSelection ||
+      dirtyRef.current ||
+      changes.some((change) => change.path === changeSelection.path)
+    )
+      return;
+    setDiffOpen(false);
+    setInlineEdit(null);
+    setChangeSelection(null);
+  }, [repo, changes, indexPending, diffOpen, reviewKind, changeSelection]);
   const unstagedChanges = changes.filter((c) => c.worktree !== " ");
   const stagedChanges = changes.filter(
     (c) => c.index !== " " && c.index !== "?",

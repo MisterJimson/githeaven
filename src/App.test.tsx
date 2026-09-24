@@ -1325,6 +1325,56 @@ it("Escape returns from a working diff to the graph and clears file selection", 
   expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
 });
 
+it("returns to the graph when a background commit removes the viewed WIP change", async () => {
+  await openWorkspace({ head: "before", changes: [modifiedChange] });
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "refresh_repository")
+      return { ...restoredSnapshot, head: "after", changes: [] };
+    throw new Error(`Unexpected ${command}`);
+  });
+  refreshWorkspace();
+
+  await screen.findByRole("button", { name: "Git (0)" });
+  await waitFor(() => expect(screen.queryByTestId("diff-worktree")).toBeNull());
+  expect(screen.queryByRole("button", { name: "Back to graph" })).toBeNull();
+});
+
+it("keeps a WIP diff open when its file still has changes after a commit", async () => {
+  await openWorkspace({ head: "before", changes: [modifiedChange] });
+  fireEvent.click(await screen.findByRole("button", { name: /changed.txt/ }));
+
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "refresh_repository")
+      return {
+        ...restoredSnapshot,
+        head: "after",
+        changes: [
+          modifiedChange,
+          {
+            path: "another.txt",
+            index: " ",
+            worktree: "M",
+            original_path: null,
+          },
+        ],
+      };
+    throw new Error(`Unexpected ${command}`);
+  });
+  refreshWorkspace();
+
+  await screen.findByRole("button", { name: "Git (2)" });
+  expect(screen.getByRole("button", { name: "Back to graph" })).toBeTruthy();
+  expect(
+    screen
+      .getByTestId("diff-worktree")
+      .closest(".review-panel")
+      ?.getAttribute("aria-hidden"),
+  ).toBe("false");
+});
+
 it("resets exported measurements along with the performance notebook", async () => {
   await openWorkspace({ changes: [] });
   startSpan("test.before-reset")();
