@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { History } from "./History";
+import { GRAPH_ROW_HEIGHT } from "./graph";
 
 afterEach(() => {
   cleanup();
@@ -324,13 +325,13 @@ it("dims unrelated commits without changing graph geometry and only reveals bran
   expect(scrollTo).not.toHaveBeenCalled();
   rerender(<History {...props} branchTip="c8" />);
   expect(scrollTo).toHaveBeenCalledWith(
-    expect.objectContaining({ top: 8 * 28 }),
+    expect.objectContaining({ top: 8 * GRAPH_ROW_HEIGHT }),
   );
   scrollTo.mockClear();
   rerender(<History {...props} branchTip="c8" search="unmatched" />);
   expect(scrollTo).not.toHaveBeenCalled();
   const viewport = screen.getByRole("listbox", { name: "Commit history" });
-  viewport.scrollTop = 9 * 28;
+  viewport.scrollTop = 9 * GRAPH_ROW_HEIGHT;
   rerender(<History {...props} branchTip="c6" />);
   expect(scrollTo).not.toHaveBeenCalled();
   rerender(<History {...props} />);

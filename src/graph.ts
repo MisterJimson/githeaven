@@ -1,5 +1,5 @@
 import type { Commit, Reference, Snapshot } from "./types";
-export const GRAPH_ROW_HEIGHT = 28;
+export const GRAPH_ROW_HEIGHT = 24;
 export const GRAPH_ROW_CENTER = GRAPH_ROW_HEIGHT / 2;
 
 export interface Edge {
