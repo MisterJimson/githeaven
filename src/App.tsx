@@ -2215,6 +2215,12 @@ export function App() {
                                   setBusy("");
                                 }
                               }}
+                              onOpenInFinder={(paths) =>
+                                call("reveal_files_in_finder", {
+                                  root: repo.root,
+                                  paths,
+                                })
+                              }
                               onStash={async (paths) => {
                                 if (
                                   busy ||

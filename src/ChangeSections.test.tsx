@@ -293,3 +293,33 @@ it.each(["path", "tree"] as const)(
     expect(stash).toHaveBeenCalledWith(["a.ts", "b.ts"]);
   },
 );
+
+it.each(["path", "tree"] as const)(
+  "reveals the selected files in Finder from %s view",
+  async (view) => {
+    const reveal = vi.fn().mockResolvedValue(undefined);
+    function Harness() {
+      const [selected, setSelected] = useState<string>();
+      return (
+        <ChangeFiles
+          paths={["a.ts", "b.ts", "c.ts"]}
+          changes={[]}
+          staged={false}
+          view={view}
+          selected={selected}
+          onSelect={setSelected}
+          onDiscard={vi.fn()}
+          onOpenInFinder={reveal}
+        />
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "a.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "b.ts" }), {
+      shiftKey: true,
+    });
+    fireEvent.contextMenu(screen.getByRole("button", { name: "b.ts" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Finder" }));
+    expect(reveal).toHaveBeenCalledWith(["a.ts", "b.ts"]);
+  },
+);

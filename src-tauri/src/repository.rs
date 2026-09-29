@@ -571,6 +571,25 @@ fn safe_path(root: &Path, path: &str) -> Result<PathBuf, String> {
     }
     Ok(current)
 }
+
+pub fn paths_for_reveal(root: &Path, paths: &[String]) -> Result<Vec<PathBuf>, String> {
+    if paths.is_empty() {
+        return Err("Select at least one file to reveal.".into());
+    }
+    let mut targets = BTreeSet::new();
+    for path in paths {
+        let mut target = root.join(relative(path)?);
+        // A deleted file cannot be selected in Finder. Reveal its nearest
+        // existing parent instead, while selecting every other existing file.
+        while target.symlink_metadata().is_err() {
+            if !target.pop() || !target.starts_with(root) {
+                return Err("The file and its parent folder no longer exist.".into());
+            }
+        }
+        targets.insert(target);
+    }
+    Ok(targets.into_iter().collect())
+}
 fn text_content(bytes: Vec<u8>) -> Result<String, String> {
     if bytes.len() > MAX_FILE {
         return Err("File exceeds the prototype's 10 MB text limit.".into());
@@ -1972,5 +1991,32 @@ mod tests {
             std::os::unix::fs::symlink("/tmp", dir.path().join("link")).unwrap();
             assert!(safe_path(dir.path(), "link/file").is_err());
         }
+    }
+    #[test]
+    fn finder_reveals_existing_files_and_parent_of_deleted_files() {
+        let dir = repo();
+        let root = dir.path();
+        fs::create_dir(root.join("nested")).unwrap();
+        fs::write(root.join("nested/one.txt"), "one").unwrap();
+        fs::write(root.join("nested/two.txt"), "two").unwrap();
+        assert_eq!(
+            paths_for_reveal(
+                root,
+                &[
+                    "nested/two.txt".into(),
+                    "nested/one.txt".into(),
+                    "nested/one.txt".into(),
+                ],
+            )
+            .unwrap(),
+            vec![root.join("nested/one.txt"), root.join("nested/two.txt")]
+        );
+        assert_eq!(
+            paths_for_reveal(root, &["nested/deleted.txt".into()]).unwrap(),
+            vec![root.join("nested")]
+        );
+        assert!(paths_for_reveal(root, &["../outside".into()]).is_err());
+        assert!(paths_for_reveal(root, &[".git/config".into()]).is_err());
+        assert!(paths_for_reveal(root, &[]).is_err());
     }
 }

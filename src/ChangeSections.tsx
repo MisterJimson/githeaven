@@ -11,6 +11,7 @@ export function ChangeSections({
   onStageAll,
   onDiscard,
   onStash,
+  onOpenInFinder,
   busy = false,
   selectionActive = true,
   selected,
@@ -19,6 +20,7 @@ export function ChangeSections({
   onSelect: (path: string, staged: boolean) => void;
   onDiscard?: (paths: string[]) => Promise<void>;
   onStash?: (paths: string[]) => Promise<void>;
+  onOpenInFinder?: (paths: string[]) => Promise<void>;
   onStageAll?: (unstage: boolean) => void;
   busy?: boolean;
   selectionActive?: boolean;
@@ -109,6 +111,7 @@ export function ChangeSections({
                 paths={section.paths}
                 onDiscard={onDiscard}
                 onStash={onStash}
+                onOpenInFinder={onOpenInFinder}
                 busy={busy}
                 changes={changes}
                 staged={section.staged}
@@ -143,10 +146,12 @@ export function ChangeFiles({
   onSelect,
   onDiscard,
   onStash,
+  onOpenInFinder,
   busy = false,
 }: {
   onDiscard?: (paths: string[]) => Promise<void>;
   onStash?: (paths: string[]) => Promise<void>;
+  onOpenInFinder?: (paths: string[]) => Promise<void>;
   busy?: boolean;
   paths: string[];
   changes: Change[];
@@ -218,6 +223,7 @@ export function ChangeFiles({
           disabled={busy}
           onDiscard={onDiscard}
           onStash={onStash}
+          onOpenInFinder={onOpenInFinder}
           onClose={() => setMenu(null)}
         />
       )}

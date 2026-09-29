@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod avatars;
+mod finder;
 mod pull_requests;
 mod repository;
 mod startup;
@@ -375,6 +376,17 @@ async fn discard_files(
 }
 
 #[tauri::command]
+fn reveal_files_in_finder(
+    root: String,
+    paths: Vec<String>,
+    state: State<'_, Session>,
+) -> Result<(), String> {
+    let root = state.checked(&root)?;
+    let paths = repository::paths_for_reveal(&root, &paths)?;
+    finder::reveal(&paths)
+}
+
+#[tauri::command]
 async fn stash_files(
     root: String,
     paths: Vec<String>,
@@ -602,6 +614,7 @@ fn main() {
             stage_file,
             stage_all_changes,
             discard_files,
+            reveal_files_in_finder,
             stash_files,
             checkout_branch,
             create_branch,

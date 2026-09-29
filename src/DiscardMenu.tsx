@@ -7,6 +7,7 @@ export function DiscardMenu({
   disabled,
   onDiscard,
   onStash,
+  onOpenInFinder,
   onClose,
 }: {
   paths: string[];
@@ -15,6 +16,7 @@ export function DiscardMenu({
   disabled: boolean;
   onDiscard: (paths: string[]) => Promise<void>;
   onStash?: (paths: string[]) => Promise<void>;
+  onOpenInFinder?: (paths: string[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
@@ -85,9 +87,28 @@ export function DiscardMenu({
           aria-label="File actions"
           style={{
             left: Math.max(0, Math.min(x, window.innerWidth - 230)),
-            top: Math.max(0, Math.min(y, window.innerHeight - 100)),
+            top: Math.max(0, Math.min(y, window.innerHeight - 150)),
           }}
         >
+          {onOpenInFinder && (
+            <button
+              role="menuitem"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  await onOpenInFinder(paths);
+                  onClose();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                  setBusy(false);
+                }
+              }}
+            >
+              Open in Finder
+            </button>
+          )}
           {onStash && (
             <button
               role="menuitem"
