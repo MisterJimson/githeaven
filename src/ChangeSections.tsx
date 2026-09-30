@@ -168,12 +168,6 @@ export function ChangeFiles({
     x: number;
     y: number;
   } | null>(null);
-  const highlighted =
-    multiple.length && selected && multiple.includes(selected)
-      ? multiple.filter((path) => paths.includes(path))
-      : selected
-        ? [selected]
-        : [];
   function eventPath(event: { nativeEvent: Event }) {
     for (const item of event.nativeEvent.composedPath()) {
       if (item instanceof HTMLElement) {
@@ -215,6 +209,13 @@ export function ChangeFiles({
         .sort(),
     [paths, effectiveQuery],
   );
+  const visiblePaths = useMemo(() => new Set(filtered), [filtered]);
+  const highlighted =
+    multiple.length && selected && multiple.includes(selected)
+      ? multiple.filter((path) => visiblePaths.has(path))
+      : selected
+        ? [selected]
+        : [];
   return (
     <div className="change-files">
       {menu && onDiscard && (
@@ -268,6 +269,27 @@ export function ChangeFiles({
           setMenu({ paths: targets, x: event.clientX, y: event.clientY });
         }}
         onKeyDownCapture={(event) => {
+          if (
+            onDiscard &&
+            selected &&
+            visiblePaths.has(selected) &&
+            event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "a"
+          ) {
+            const target = event.nativeEvent.composedPath()[0];
+            if (
+              target instanceof HTMLElement &&
+              (target.matches("input, textarea") || target.isContentEditable)
+            )
+              return;
+            event.preventDefault();
+            event.stopPropagation();
+            setMultiple(filtered);
+            return;
+          }
           if (
             event.altKey ||
             event.ctrlKey ||

@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -323,3 +324,112 @@ it.each(["path", "tree"] as const)(
     expect(reveal).toHaveBeenCalledWith(["a.ts", "b.ts"]);
   },
 );
+
+it.each(["path", "tree"] as const)(
+  "selects every file in the focused %s view with Command-A",
+  (view) => {
+    const reveal = vi.fn().mockResolvedValue(undefined);
+    function Harness() {
+      const [selected, setSelected] = useState<string>();
+      return (
+        <ChangeFiles
+          paths={["a.ts", "b.ts", "c.ts"]}
+          changes={[]}
+          staged={false}
+          view={view}
+          selected={selected}
+          onSelect={setSelected}
+          onDiscard={vi.fn()}
+          onOpenInFinder={reveal}
+        />
+      );
+    }
+    render(<Harness />);
+    const navigation = screen.getByLabelText("Unstaged file navigation");
+    expect(
+      fireEvent.keyDown(navigation, {
+        key: "a",
+        metaKey: true,
+        cancelable: true,
+      }),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "a.ts" }));
+    expect(document.activeElement).toBe(navigation);
+    expect(
+      fireEvent.keyDown(navigation, {
+        key: "a",
+        metaKey: true,
+        cancelable: true,
+      }),
+    ).toBe(false);
+    if (view === "path") {
+      for (const path of ["a.ts", "b.ts", "c.ts"])
+        expect(
+          screen
+            .getByRole("button", { name: path })
+            .getAttribute("aria-pressed"),
+        ).toBe("true");
+    }
+    fireEvent.contextMenu(screen.getByRole("button", { name: "c.ts" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Discard changes to 3 files…" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Finder" }));
+    expect(reveal).toHaveBeenCalledWith(["a.ts", "b.ts", "c.ts"]);
+  },
+);
+
+it("keeps Command-A within its staging group and visible search results", async () => {
+  const reveal = vi.fn().mockResolvedValue(undefined);
+  function Harness() {
+    const [selected, setSelected] = useState<Selection | null>(null);
+    return (
+      <ChangeSections
+        changes={[...files(21), ...files(2, true)]}
+        selected={selected}
+        onSelect={(path, staged) =>
+          setSelected({ path, source: staged ? "index" : "worktree" })
+        }
+        onDiscard={vi.fn()}
+        onOpenInFinder={reveal}
+      />
+    );
+  }
+  render(<Harness />);
+  const search = screen.getByRole("searchbox", {
+    name: "Search unstaged files",
+  });
+  fireEvent.change(search, { target: { value: "file-1" } });
+  fireEvent.click(screen.getByRole("button", { name: "src/file-10.ts" }));
+  expect(
+    fireEvent.keyDown(search, { key: "a", metaKey: true, cancelable: true }),
+  ).toBe(true);
+  fireEvent.keyDown(screen.getByLabelText("Unstaged file navigation"), {
+    key: "a",
+    metaKey: true,
+  });
+  fireEvent.contextMenu(screen.getByRole("button", { name: "src/file-19.ts" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open in Finder" }));
+  expect(reveal).toHaveBeenLastCalledWith(
+    Array.from({ length: 10 }, (_, index) => `src/file-${index + 10}.ts`),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("menuitem", { name: "Open in Finder" }),
+    ).toBeNull(),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "staged/file-00.ts" }));
+  fireEvent.keyDown(screen.getByLabelText("Staged file navigation"), {
+    key: "a",
+    metaKey: true,
+  });
+  fireEvent.contextMenu(
+    screen.getByRole("button", { name: "staged/file-01.ts" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open in Finder" }));
+  expect(reveal).toHaveBeenLastCalledWith([
+    "staged/file-00.ts",
+    "staged/file-01.ts",
+  ]);
+});
