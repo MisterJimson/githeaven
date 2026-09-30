@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Stash } from "./types";
-import { activateDialogPrimary } from "./dialogPrimary";
 export function StashMenu({
   stash,
   x,
@@ -51,7 +50,6 @@ export function StashMenu({
           role="dialog"
           aria-modal="true"
           aria-label={error ? "Stash operation failed" : "Delete stash?"}
-          onKeyDownCapture={activateDialogPrimary}
         >
           <h2>{error ? "Stash operation failed" : "Delete stash?"}</h2>
           <p>
@@ -62,12 +60,12 @@ export function StashMenu({
               "This permanently removes the saved stash. Your working files will not change."}
           </p>
           <div className="modal-actions">
-            <button autoFocus disabled={busy} onClick={onClose}>
+            <button autoFocus={!!error} disabled={busy} onClick={onClose}>
               {error ? "Close" : "Cancel"}
             </button>
             {!error && (
               <button
-                data-dialog-primary
+                autoFocus
                 className="delete-branch-action"
                 disabled={busy}
                 onClick={() => void run("delete")}

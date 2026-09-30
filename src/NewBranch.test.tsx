@@ -9,22 +9,21 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { NewBranch } from "./NewBranch";
 afterEach(cleanup);
-it("creates and switches on Enter and keeps errors available for correction", async () => {
+it("focuses the name field, submits the form, and keeps errors available for correction", async () => {
   const create = vi
     .fn()
     .mockRejectedValueOnce(new Error("Branch already exists"))
     .mockResolvedValueOnce(undefined);
   const close = vi.fn();
   render(<NewBranch branch="main" onCreate={create} onClose={close} />);
+  expect(document.activeElement).toBe(screen.getByLabelText("Branch name"));
   fireEvent.change(screen.getByLabelText("Branch name"), {
     target: { value: "feature/test" },
   });
-  fireEvent.keyDown(screen.getByLabelText("Branch name"), { key: "Enter" });
+  fireEvent.submit(screen.getByRole("dialog"));
   await screen.findByRole("alert");
   expect(close).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: "Cancel" }), {
-    key: "Enter",
-  });
+  fireEvent.submit(screen.getByRole("dialog"));
   await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   expect(create).toHaveBeenCalledWith("feature/test");
 });

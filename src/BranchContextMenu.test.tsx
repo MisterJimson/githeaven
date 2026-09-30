@@ -21,6 +21,9 @@ it("requires confirmation and allows cancellation without deleting", () => {
   );
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete branch" }));
   expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Delete branch" }),
+  );
   expect(onDelete).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(onClose).toHaveBeenCalledOnce();
@@ -61,6 +64,9 @@ it("prevents deletion of the checked out branch", () => {
     (screen.getByRole("button", { name: "Delete branch" }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Cancel" }),
+  );
 });
 
 it("allows local or remote selection and force retries only the unmerged local copy", async () => {
@@ -91,8 +97,7 @@ it("allows local or remote selection and force retries only the unmerged local c
   fireEvent.click(
     screen.getByRole("button", { name: "Delete selected copies" }),
   );
-  await screen.findByRole("button", { name: "Delete anyway" });
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("button", { name: "Delete anyway" }));
   await screen.findAllByText("Deleted");
   expect(onDelete.mock.calls).toEqual([
     [target.ref, false],

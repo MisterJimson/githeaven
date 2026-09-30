@@ -1,6 +1,5 @@
 import { useAppZoom } from "./appZoom";
 import { resolveBranchTip } from "./graph";
-import { activateDialogPrimary } from "./dialogPrimary";
 import { cachedStashDetails, loadStashDetails } from "./stashDetails";
 import { PublishBranch, type PublishTarget } from "./PublishBranch";
 import { NewBranch } from "./NewBranch";
@@ -2795,7 +2794,6 @@ export function App() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="stash-title"
-            onKeyDownCapture={activateDialogPrimary}
           >
             <h2 id="stash-title">Stash changes before switching?</h2>
             <p>
@@ -2804,11 +2802,11 @@ export function App() {
               saved for you to apply later.
             </p>
             <div className="modal-actions">
-              <button autoFocus onClick={() => setCheckoutPrompt(null)}>
+              <button onClick={() => setCheckoutPrompt(null)}>
                 Cancel switch
               </button>
               <button
-                data-dialog-primary
+                autoFocus
                 className="primary-button"
                 onClick={() => {
                   const ref = checkoutPrompt;
@@ -2829,7 +2827,6 @@ export function App() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="unsaved-title"
-            onKeyDownCapture={activateDialogPrimary}
           >
             <FileCode2 size={24} />
             <h2 id="unsaved-title">Keep your changes?</h2>
@@ -2864,7 +2861,6 @@ export function App() {
               </button>
               <button
                 autoFocus
-                data-dialog-primary
                 className="primary-button"
                 disabled={!!busy}
                 onClick={async () => {

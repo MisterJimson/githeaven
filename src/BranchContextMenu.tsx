@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import type { Reference } from "./types";
-import { activateDialogPrimary } from "./dialogPrimary";
 export function BranchContextMenu({
   target,
   checkedOut,
@@ -102,7 +101,6 @@ export function BranchContextMenu({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-branch-title"
-          onKeyDownCapture={activateDialogPrimary}
         >
           <h2 id="delete-branch-title">Delete branch</h2>
           <p>Select the copies to delete.</p>
@@ -156,11 +154,15 @@ export function BranchContextMenu({
           )}
           {error && <p role="alert">{error}</p>}
           <div className="modal-actions">
-            <button autoFocus disabled={busy} onClick={onClose}>
+            <button
+              autoFocus={chosen.length === 0}
+              disabled={busy}
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button
-              data-dialog-primary
+              autoFocus={chosen.length > 0}
               className="delete-branch-action"
               disabled={busy || chosen.length === 0}
               onClick={() => void remove(unmerged !== null)}

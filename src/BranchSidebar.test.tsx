@@ -160,7 +160,9 @@ it("offers stash operations and confirms deletion", () => {
   ).toBeTruthy();
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete stash…" }));
   expect(action).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
+  const confirm = screen.getByRole("button", { name: "Delete stash" });
+  expect(document.activeElement).toBe(confirm);
+  fireEvent.click(confirm);
   expect(action).toHaveBeenCalledWith(
     expect.objectContaining({ oid: "a".repeat(40) }),
     "delete",

@@ -11,7 +11,7 @@ import { DiscardMenu } from "./DiscardMenu";
 
 afterEach(cleanup);
 
-it("confirms a discard with Enter, even while Cancel is focused", async () => {
+it("focuses the discard action when the confirmation opens", async () => {
   const onDiscard = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
   render(
@@ -25,11 +25,10 @@ it("confirms a discard with Enter, even while Cancel is focused", async () => {
     />,
   );
   fireEvent.click(screen.getByRole("menuitem", { name: /Discard changes/ }));
-  const dialog = screen.getByRole("dialog");
   expect(document.activeElement).toBe(
-    screen.getByRole("button", { name: "Cancel" }),
+    screen.getByRole("button", { name: "Discard changes" }),
   );
-  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  fireEvent.click(document.activeElement!);
   await waitFor(() =>
     expect(onDiscard).toHaveBeenCalledExactlyOnceWith([
       "first.ts",
@@ -37,27 +36,12 @@ it("confirms a discard with Enter, even while Cancel is focused", async () => {
     ]),
   );
   expect(onClose).toHaveBeenCalledOnce();
-  expect(dialog).toBeTruthy();
 });
 
-it("does not activate a disabled primary action or repeat a held Enter", async () => {
+it("respects focus on Cancel instead of redirecting Enter to discard", () => {
   const onDiscard = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
-  const { rerender } = render(
-    <DiscardMenu
-      paths={["first.ts"]}
-      x={10}
-      y={10}
-      disabled
-      onDiscard={onDiscard}
-      onClose={onClose}
-    />,
-  );
-  fireEvent.click(screen.getByRole("menuitem", { name: /Discard changes/ }));
-  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
-  expect(onDiscard).not.toHaveBeenCalled();
-  expect(onClose).not.toHaveBeenCalled();
-  rerender(
+  render(
     <DiscardMenu
       paths={["first.ts"]}
       x={10}
@@ -67,6 +51,12 @@ it("does not activate a disabled primary action or repeat a held Enter", async (
       onClose={onClose}
     />,
   );
-  fireEvent.keyDown(document.activeElement!, { key: "Enter", repeat: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: /Discard changes/ }));
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  cancel.focus();
+  expect(fireEvent.keyDown(cancel, { key: "Enter" })).toBe(true);
+  expect(onDiscard).not.toHaveBeenCalled();
+  fireEvent.click(cancel);
+  expect(onClose).toHaveBeenCalledOnce();
   expect(onDiscard).not.toHaveBeenCalled();
 });
