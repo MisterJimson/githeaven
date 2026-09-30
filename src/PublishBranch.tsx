@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { activateDialogPrimary } from "./dialogPrimary";
 export type PublishTarget = { root: string; branch: string; remotes: string[] };
 export function PublishBranch({
   target,
@@ -28,6 +29,7 @@ export function PublishBranch({
         role="dialog"
         aria-modal="true"
         aria-labelledby="publish-title"
+        onKeyDownCapture={activateDialogPrimary}
         onSubmit={async (e) => {
           e.preventDefault();
           if (busy || !remote || !name.trim()) return;
@@ -80,6 +82,7 @@ export function PublishBranch({
             Cancel
           </button>
           <button
+            data-dialog-primary
             className="primary-button"
             disabled={busy || !remote || !name.trim()}
           >

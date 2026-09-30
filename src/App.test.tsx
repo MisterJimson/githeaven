@@ -490,6 +490,24 @@ it("requires an explicit decision before leaving an unsaved editor", async () =>
   ).toBe(false);
 });
 
+it("saves and continues on Enter in the unsaved-edit dialog", async () => {
+  const editor = await openEditor();
+  fireEvent.change(editor, { target: { value: "saved with Enter" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Git \(\d+\)$/ }));
+  await screen.findByRole("dialog");
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Save & continue" }),
+  );
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  await waitFor(() =>
+    expect(call).toHaveBeenCalledWith(
+      "save_file",
+      expect.objectContaining({ contents: "saved with Enter" }),
+    ),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
 it("keeps the viewed diff selected when an external refresh temporarily removes its path", async () => {
   await openWorkspace({
     changes: [
@@ -1183,7 +1201,9 @@ it("prompts for WIP before checkout and only stashes after explicit confirmation
   ).toHaveLength(1);
   fireEvent.doubleClick(screen.getByRole("button", { name: "feature" }));
   await screen.findByText("Stash changes before switching?");
-  fireEvent.click(screen.getByRole("button", { name: "Stash and switch" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Cancel switch" }), {
+    key: "Enter",
+  });
   await waitFor(() =>
     expect(call).toHaveBeenCalledWith("checkout_branch", {
       root: "/sample",

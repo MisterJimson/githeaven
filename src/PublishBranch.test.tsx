@@ -27,7 +27,9 @@ it("defaults to the same branch on origin and publishes only on confirmation", a
     (screen.getByLabelText("Remote branch name") as HTMLInputElement).value,
   ).toBe("feature/new");
   expect(publish).not.toHaveBeenCalled();
-  fireEvent.submit(screen.getByRole("dialog"));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Cancel" }), {
+    key: "Enter",
+  });
   await waitFor(() => expect(close).toHaveBeenCalled());
   expect(publish).toHaveBeenCalledWith("origin", "feature/new");
 });

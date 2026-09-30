@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { activateDialogPrimary } from "./dialogPrimary";
 
 export function NewBranch({
   branch,
@@ -25,6 +26,7 @@ export function NewBranch({
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-branch-title"
+        onKeyDownCapture={activateDialogPrimary}
         onSubmit={async (event) => {
           event.preventDefault();
           if (busy || !name.trim()) return;
@@ -61,6 +63,7 @@ export function NewBranch({
             Cancel
           </button>
           <button
+            data-dialog-primary
             type="submit"
             className="primary-button"
             disabled={busy || !name.trim()}

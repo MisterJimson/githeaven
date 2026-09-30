@@ -91,7 +91,8 @@ it("allows local or remote selection and force retries only the unmerged local c
   fireEvent.click(
     screen.getByRole("button", { name: "Delete selected copies" }),
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Delete anyway" }));
+  await screen.findByRole("button", { name: "Delete anyway" });
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
   await screen.findAllByText("Deleted");
   expect(onDelete.mock.calls).toEqual([
     [target.ref, false],

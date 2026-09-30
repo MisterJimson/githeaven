@@ -19,10 +19,12 @@ it("creates and switches on Enter and keeps errors available for correction", as
   fireEvent.change(screen.getByLabelText("Branch name"), {
     target: { value: "feature/test" },
   });
-  fireEvent.submit(screen.getByRole("dialog"));
+  fireEvent.keyDown(screen.getByLabelText("Branch name"), { key: "Enter" });
   await screen.findByRole("alert");
   expect(close).not.toHaveBeenCalled();
-  fireEvent.submit(screen.getByRole("dialog"));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Cancel" }), {
+    key: "Enter",
+  });
   await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   expect(create).toHaveBeenCalledWith("feature/test");
 });

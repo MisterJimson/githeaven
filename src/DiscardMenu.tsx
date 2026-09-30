@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { activateDialogPrimary } from "./dialogPrimary";
 export function DiscardMenu({
   paths,
   x,
@@ -41,6 +42,7 @@ export function DiscardMenu({
           role="dialog"
           aria-modal="true"
           aria-labelledby="discard-title"
+          onKeyDownCapture={activateDialogPrimary}
         >
           <h2 id="discard-title">
             Discard changes to{" "}
@@ -62,6 +64,7 @@ export function DiscardMenu({
               Cancel
             </button>
             <button
+              data-dialog-primary
               className="delete-branch-action"
               disabled={busy || disabled}
               onClick={async () => {
