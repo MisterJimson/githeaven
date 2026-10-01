@@ -52,10 +52,12 @@ export const BranchSidebar = memo(function BranchSidebar({
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   useEffect(() => {
-    if (activeRef) {
-      setQuery("");
-      setCollapsed((current) => ({ ...current, [activeRef.kind]: false }));
-    }
+    if (activeRef)
+      setCollapsed((current) =>
+        current[activeRef.kind]
+          ? { ...current, [activeRef.kind]: false }
+          : current,
+      );
   }, [activeRef]);
   const rows = useMemo(() => {
     const rows: Row[] = [];

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { BranchSidebar } from "./BranchSidebar";
 import type { Reference } from "./types";
 
@@ -81,6 +82,51 @@ it("filters and collapses branches and only checks out on double click", async (
   fireEvent.click(screen.getByRole("button", { name: /LOCAL BRANCHES/ }));
   expect(screen.queryByRole("button", { name: "feature" })).toBeNull();
   expect(screen.getByRole("button", { name: "origin/feature" })).toBeTruthy();
+});
+
+it("keeps the filtered list in place while selecting and double-clicking a branch", () => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(223);
+  const refs: Reference[] = [
+    { name: "main", oid: "one", kind: "local" },
+    { name: "origin/jason/cursor-onroad-eld-8f6d", oid: "two", kind: "remote" },
+    { name: "origin/another-branch", oid: "three", kind: "remote" },
+  ];
+  const onCheckout = vi.fn();
+  function SidebarWithSelection() {
+    const [activeRef, setActiveRef] = useState<Reference | null>(null);
+    return (
+      <BranchSidebar
+        refs={refs}
+        branch="main"
+        branchFilter={activeRef?.oid ?? ""}
+        activeRef={activeRef}
+        onFilter={(_oid, ref) => setActiveRef(ref ?? null)}
+        onCheckout={onCheckout}
+      />
+    );
+  }
+  render(<SidebarWithSelection />);
+  const search = screen.getByRole("textbox", { name: "Filter branches" });
+  fireEvent.change(search, {
+    target: { value: "jason/cursor-onroad-eld-8f6d" },
+  });
+  const branch = screen.getByRole("button", {
+    name: "origin/jason/cursor-onroad-eld-8f6d",
+  });
+  fireEvent.click(branch);
+  expect((search as HTMLInputElement).value).toBe(
+    "jason/cursor-onroad-eld-8f6d",
+  );
+  expect(screen.getByRole("button", { name: branch.textContent! })).toBe(
+    branch,
+  );
+  expect(
+    screen.queryByRole("button", { name: "origin/another-branch" }),
+  ).toBeNull();
+  fireEvent.click(branch);
+  fireEvent.doubleClick(branch);
+  expect(onCheckout).toHaveBeenCalledExactlyOnceWith(refs[1]);
 });
 
 it("opens delete as the first context action without selecting the branch", () => {
