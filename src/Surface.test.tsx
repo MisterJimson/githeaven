@@ -517,3 +517,38 @@ it("switches to a different file even when its contents match the previous file"
   await finishWorker(1, "second.ts");
   expect(viewer.textContent).toBe("second.ts");
 });
+
+it("keeps the previous diff visible until a large replacement is highlighted and reuses both on subsequent switches", async () => {
+  vi.mocked(call).mockResolvedValue(versions("small"));
+  const { rerender } = render(<DiffSurface {...props} refresh={0} />);
+  await finishWorker(0, "file.ts");
+  const viewer = screen.getByTestId("viewer");
+  const lock = { ...props.selection, path: "pnpm-lock.yaml" };
+  vi.mocked(call).mockResolvedValue({
+    old: "a".repeat(1_650_000),
+    new: "b".repeat(1_650_000),
+    elapsed_ms: 1,
+  });
+  let ready = () => {};
+  highlightPool.primeDiffHighlightCache.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        ready = resolve;
+      }),
+  );
+  rerender(<DiffSurface {...props} selection={lock} refresh={0} />);
+  await finishWorker(1, "pnpm-lock.yaml");
+  expect(screen.getByTestId("viewer")).toBe(viewer);
+  expect(viewer.textContent).toBe("file.ts");
+  expect(screen.queryByText("Loading comparison…")).toBeNull();
+  await act(async () => ready());
+  expect(viewer.textContent).toBe("pnpm-lock.yaml");
+  rerender(<DiffSurface {...props} refresh={0} />);
+  await waitFor(() => expect(viewer.textContent).toBe("file.ts"));
+  rerender(<DiffSurface {...props} selection={lock} refresh={0} />);
+  await waitFor(() => expect(viewer.textContent).toBe("pnpm-lock.yaml"));
+  expect(screen.getByTestId("viewer")).toBe(viewer);
+  expect(call).toHaveBeenCalledTimes(2);
+  expect(highlightPool.primeDiffHighlightCache).toHaveBeenCalledTimes(2);
+  expect(DiffWorker.instances).toHaveLength(2);
+});

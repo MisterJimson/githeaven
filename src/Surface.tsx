@@ -36,7 +36,7 @@ import {
   DiffPreparationSuperseded,
   type PreparedDiff,
 } from "./DiffCache";
-import { nearbyDiffs } from "./diffPrefetch";
+import { diffPrefetchBudget, nearbyDiffs } from "./diffPrefetch";
 import { errorText } from "./api";
 import { useEditorChanges, changeGutterCSS } from "./useEditorChanges";
 import { countEvent, registerGauge, startSpan } from "./performance";
@@ -120,16 +120,18 @@ function PreparedDiffs({
     const timer = setTimeout(() => {
       void (async () => {
         // One speculative diff at a time; leave the second highlight worker free for clicks.
+        let remainingBytes = diffPrefetchBudget;
         for (const { selection: candidate, maxBytes } of nearby) {
-          if (!active) break;
+          if (!active || remainingBytes <= 0) break;
           try {
-            await cache.prepare(
+            const prepared = await cache.prepare(
               root,
               candidate,
               candidate.source === "commit" ? 0 : refresh,
               false,
-              maxBytes,
+              Math.min(maxBytes, remainingBytes),
             );
+            remainingBytes -= prepared.bytes;
           } catch {
             /* Explicit selection reports errors. */
           }

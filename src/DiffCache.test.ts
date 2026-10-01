@@ -19,6 +19,45 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 const selection = { path: "file.ts", source: "worktree" as const };
+it("prepares and retains a large lockfile before selection without repeating work on revisit", async () => {
+  const lock = { ...selection, path: "pnpm-lock.yaml" };
+  vi.mocked(call).mockResolvedValue({
+    old: "a".repeat(1_650_000),
+    new: "b".repeat(1_650_000),
+    elapsed_ms: 1,
+  });
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+  };
+  const cache = new DiffCache(pool);
+  const prepared = await cache.prepare("repo", lock, 1, false, 8 * 1024 * 1024);
+  expect(cache.peek("repo", lock)).toBe(prepared);
+  expect(await cache.prepare("repo", lock, 1)).toBe(prepared);
+  expect(call).toHaveBeenCalledTimes(1);
+  expect(pool.primeDiffHighlightCache).toHaveBeenCalledTimes(1);
+});
+
+it("bounds large comparisons and releases their syntax cache when evicted", async () => {
+  vi.mocked(call).mockResolvedValue({
+    old: "a".repeat(2 * 1024 * 1024),
+    new: "b".repeat(2 * 1024 * 1024),
+    elapsed_ms: 1,
+  });
+  const pool = {
+    primeDiffHighlightCache: vi.fn().mockResolvedValue(undefined),
+    evictDiffFromCache: vi.fn(),
+  };
+  const cache = new DiffCache(pool);
+  const first = await cache.prepare("repo", selection, 1);
+  for (let i = 1; i < 4; i++)
+    await cache.prepare("repo", { ...selection, path: `${i}.yaml` }, 1);
+  expect(cache.stats().sourceBytes).toBeLessThanOrEqual(24 * 1024 * 1024);
+  expect(cache.peek("repo", selection)).toBeUndefined();
+  expect(pool.evictDiffFromCache).toHaveBeenCalledExactlyOnceWith(
+    first.diff.cacheKey,
+  );
+});
+
 it("does not let a newer speculative refresh supersede visible highlighting", async () => {
   let release!: () => void;
   const pool = {

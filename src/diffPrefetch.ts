@@ -1,5 +1,10 @@
 import type { Selection } from "./types";
 
+// Source strings use two bytes per character, across both versions. A 2 MiB
+// lockfile needs an 8 MiB allowance even when its actual diff is small.
+const fileBudget = 8 * 1024 * 1024;
+export const diffPrefetchBudget = 12 * 1024 * 1024;
+
 // Keep speculative work close to navigation, prioritizing the next file over
 // the previous one at equal distance. Never return more than eight candidates.
 export function nearbyDiffs(
@@ -16,7 +21,7 @@ export function nearbyDiffs(
   if (selected < 0)
     return candidates
       .slice(0, 8)
-      .map((selection) => ({ selection, maxBytes: 128 * 1024 }));
+      .map((selection) => ({ selection, maxBytes: fileBudget }));
   const result = [candidates[selected]];
   for (
     let distance = 1;
@@ -30,10 +35,6 @@ export function nearbyDiffs(
   }
   return result.map((selection) => ({
     selection,
-    maxBytes:
-      selection === candidates[selected - 1] ||
-      selection === candidates[selected + 1]
-        ? 512 * 1024
-        : 128 * 1024,
+    maxBytes: fileBudget,
   }));
 }

@@ -29,7 +29,10 @@ let serial = 0;
 export const diffKey = (root: string, s: Selection) =>
   JSON.stringify([root, s.path, s.source, s.oid, s.parent, s.oldPath]);
 
-// Matches the bounded Pierre AST cache; large diffs remain usable but are not retained.
+const cacheByteLimit = 24 * 1024 * 1024;
+
+// Retain large comparisons (including lockfiles) alongside nearby files. Evict
+// their syntax ASTs with their sources so both caches have the same lifetime.
 export class DiffCache {
   private entries = new Map<string, PreparedDiff>();
   private deferred = new Map<string, { refresh: number; bytes: number }>();
@@ -279,7 +282,7 @@ export class DiffCache {
             !this.pool.getDiffResultCache(diff),
           bytes: 2 * ((data.old?.length ?? 0) + (data.new?.length ?? 0)),
         };
-        if (this.pending.get(key) === task && value.bytes <= 6 * 1024 * 1024) {
+        if (this.pending.get(key) === task && value.bytes <= cacheByteLimit) {
           // The replacement is fully highlighted. Retire only the old syntax
           // version now, preserving it while reads/highlighting were in flight.
           const retired = this.entries.get(key)?.diff.cacheKey;
@@ -296,10 +299,13 @@ export class DiffCache {
             (sum, v) => sum + v.bytes,
             0,
           );
-          while (this.entries.size > 24 || bytes > 6 * 1024 * 1024) {
+          while (this.entries.size > 24 || bytes > cacheByteLimit) {
             const oldest = this.entries.keys().next().value!;
-            bytes -= this.entries.get(oldest)!.bytes;
+            const evicted = this.entries.get(oldest)!;
+            bytes -= evicted.bytes;
             this.entries.delete(oldest);
+            if (evicted.diff.cacheKey)
+              this.pool.evictDiffFromCache?.(evicted.diff.cacheKey);
           }
         }
         return value;

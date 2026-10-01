@@ -32,16 +32,10 @@ it("distinguishes staged and commit identities and handles missing selection", (
   expect(nearbyDiffs(files)).toEqual(files.slice(0, 8));
 });
 
-it("gives only immediate neighbors the larger speculative budget", () => {
+it("allows lockfile-sized comparisons throughout the nearby list", () => {
   for (const selected of [files[0], files[20], files[39], undefined]) {
     const result = withBudgets(files, selected);
-    const index = selected ? files.indexOf(selected) : -1;
-    const larger = result.filter((item) => item.maxBytes === 512 * 1024);
-    expect(larger.map((item) => item.selection)).toEqual(
-      index < 0 ? [] : [files[index + 1], files[index - 1]].filter(Boolean),
-    );
-    expect(
-      result.reduce((total, item) => total + item.maxBytes, 0),
-    ).toBeLessThanOrEqual(1792 * 1024);
+    expect(result).toHaveLength(8);
+    expect(result.every((item) => item.maxBytes >= 4 * 1_650_000)).toBe(true);
   }
 });
