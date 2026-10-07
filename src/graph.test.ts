@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { layoutGraph, reachable, graphLaneX, resolveBranchTip } from "./graph";
+import {
+  layoutGraph,
+  reachable,
+  graphLaneX,
+  resolveBranchTip,
+  withStashes,
+} from "./graph";
 import type { Commit } from "./types";
 const c = (oid: string, ...parents: string[]): Commit => ({
   oid,
@@ -115,5 +121,58 @@ it("keeps main straight while an unrelated branch runs beside its pending ancest
     from: 1,
     to: 0,
     color: rows[4].color,
+  });
+});
+
+describe("stashes in history", () => {
+  const history = [
+    { ...c("tip", "base"), timestamp: 30 },
+    { ...c("other", "base"), timestamp: 20 },
+    { ...c("base"), timestamp: 10 },
+  ];
+  const stash = (oid: string, timestamp: number, base = "base") => ({
+    oid,
+    timestamp,
+    base,
+    name: "stash@{0}",
+    message: oid,
+  });
+  it("inserts stashes by creation time without changing commit topology", () => {
+    const entries = withStashes(history, [
+      stash("old", 15),
+      stash("new", 40),
+      stash("middle", 25),
+    ]);
+    expect(entries.map((c) => c.oid)).toEqual([
+      "new",
+      "tip",
+      "middle",
+      "other",
+      "old",
+      "base",
+    ]);
+    expect(entries.filter((c) => history.includes(c))).toEqual(history);
+    expect(entries[0].parents).toEqual(["base"]);
+    const rows = layoutGraph(entries);
+    expect(rows[0].lane).not.toBe(rows[1].lane);
+    expect(rows.at(-1)?.above.length).toBeGreaterThan(0);
+  });
+  it("shows stashes even when their base is outside the loaded page", () => {
+    const saved = stash("saved", 40, "unloaded");
+    const entries = withStashes(history, [saved]);
+    expect(entries[0]).toMatchObject({ oid: "saved", parents: ["unloaded"] });
+    expect(withStashes([], [saved])).toEqual([entries[0]]);
+    const complete = withStashes([...history, c("unloaded")], [saved]);
+    expect(complete.slice(0, -1)).toEqual(entries);
+  });
+  it("keeps a stash before its base despite skewed clocks and includes each stash once", () => {
+    const saved = stash("saved", 1);
+    const entries = withStashes([...history, c("saved")], [saved, saved]);
+    expect(entries.map((c) => c.oid)).toEqual([
+      "tip",
+      "other",
+      "saved",
+      "base",
+    ]);
   });
 });

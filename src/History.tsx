@@ -14,6 +14,7 @@ import { CommitNode } from "./CommitNode";
 import { startSpan } from "./performance";
 import {
   layoutGraph,
+  withStashes,
   graphLaneX,
   reachable,
   GRAPH_ROW_HEIGHT,
@@ -88,25 +89,10 @@ export const History = memo(function History({
     () => new Map((stashes ?? []).map((s) => [s.oid, s])),
     [stashes],
   );
-  const historyCommits = useMemo(() => {
-    const byBase = new Map<string, Commit[]>();
-    const ids = new Set(commits.map((c) => c.oid));
-    for (const stash of stashes ?? []) {
-      const entry: Commit = {
-        oid: stash.oid,
-        parents: stash.base ? [stash.base] : [],
-        subject: stash.message,
-        author: stash.author ?? "",
-        author_email: stash.author_email,
-        timestamp: stash.timestamp ?? 0,
-      };
-      if (stash.base && ids.has(stash.base))
-        byBase.set(stash.base, [...(byBase.get(stash.base) ?? []), entry]);
-    }
-    return commits
-      .filter((c) => !stashMap.has(c.oid))
-      .flatMap((c) => [...(byBase.get(c.oid) ?? []), c]);
-  }, [commits, stashes, stashMap]);
+  const historyCommits = useMemo(
+    () => withStashes(commits, stashes ?? []),
+    [commits, stashes],
+  );
   const [context, setContext] = useState<{
     root?: string;
     ref: Reference;
@@ -577,7 +563,7 @@ export const History = memo(function History({
             );
           })}
         </div>
-        {!commits.length && (
+        {!entries.length && (
           <div className="empty">
             <GitCommitHorizontal size={26} />
             <p>No commits to show</p>

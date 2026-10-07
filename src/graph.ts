@@ -1,4 +1,4 @@
-import type { Commit, Reference, Snapshot } from "./types";
+import type { Commit, Reference, Snapshot, Stash } from "./types";
 export const GRAPH_ROW_HEIGHT = 24;
 export const GRAPH_ROW_CENTER = GRAPH_ROW_HEIGHT / 2;
 
@@ -13,6 +13,42 @@ export interface GraphRow {
   above: Edge[];
   below: Edge[];
 }
+/** Keep commit topology intact while placing saved work by its creation time. */
+export function withStashes(commits: Commit[], stashes: Stash[]): Commit[] {
+  const unique = new Map(stashes.map((stash) => [stash.oid, stash]));
+  const history = commits.filter((commit) => !unique.has(commit.oid));
+  const positions = new Map(
+    history.map((commit, index) => [commit.oid, index]),
+  );
+  const insertions = new Map<number, Commit[]>();
+  for (const stash of [...unique.values()].sort(
+    (a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0),
+  )) {
+    const baseIndex = positions.get(stash.base ?? "") ?? history.length;
+    const dateIndex = history.findIndex(
+      (commit) => commit.timestamp <= (stash.timestamp ?? 0),
+    );
+    // Clock skew must never put a stash below its parent. Missing parents are
+    // normal with paginated history; keep the stash and its outgoing edge.
+    const index = Math.min(
+      baseIndex,
+      dateIndex < 0 ? history.length : dateIndex,
+    );
+    const entry: Commit = {
+      oid: stash.oid,
+      parents: stash.base ? [stash.base] : [],
+      subject: stash.message,
+      author: stash.author ?? "",
+      author_email: stash.author_email,
+      timestamp: stash.timestamp ?? 0,
+    };
+    insertions.set(index, [...(insertions.get(index) ?? []), entry]);
+  }
+  return history
+    .flatMap((commit, index) => [...(insertions.get(index) ?? []), commit])
+    .concat(insertions.get(history.length) ?? []);
+}
+
 /** Lane state crosses row/page boundaries. Commit order must be topological. */
 export function layoutGraph(commits: Commit[]): GraphRow[] {
   let lanes: { oid: string; color: number }[] = [];

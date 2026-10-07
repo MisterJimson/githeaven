@@ -370,7 +370,7 @@ it("shows a floating jump button only deep in history and returns to top without
   expect(screen.queryByRole("button", { name: "Jump to top" })).toBeNull();
 });
 
-it("places a stash before its base with a distinct node and stash actions", () => {
+it("places a recent stash above older commits with a distinct node and stash actions", () => {
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
   const onSelect = vi.fn();
@@ -413,22 +413,22 @@ it("places a stash before its base with a distinct node and stash actions", () =
     />,
   );
   const rows = screen.getAllByRole("option");
-  expect(rows[0].textContent).toContain("Latest");
-  expect(rows[1].textContent).toContain("stash@{0}Saved edits");
+  expect(rows[1].textContent).toContain("Latest");
+  expect(rows[0].textContent).toContain("stash@{0}Saved edits");
   expect(rows[2].textContent).toContain("Base");
-  expect(rows[1].querySelector('[aria-label="Stash"]')).toBeTruthy();
-  fireEvent.click(rows[1]);
+  expect(rows[0].querySelector('[aria-label="Stash"]')).toBeTruthy();
+  fireEvent.click(rows[0]);
   expect(onSelect).toHaveBeenCalledWith(
     expect.objectContaining({ oid: "saved", parents: ["base"] }),
   );
-  fireEvent.contextMenu(rows[1]);
+  fireEvent.contextMenu(rows[0]);
   fireEvent.click(
     screen.getByRole("menuitem", { name: "Apply to working tree" }),
   );
   expect(onAction).toHaveBeenCalledWith(stash, "apply");
 });
 
-it("loads history then reveals a requested stash, and supports repeated clicks", () => {
+it("reveals a stash before its base is loaded, and supports repeated clicks", () => {
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(56);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(56);
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
@@ -451,7 +451,13 @@ it("loads history then reveals a requested stash, and supports repeated clicks",
     onSelect: vi.fn(),
     onSelectWorking: vi.fn(),
     stashes: [
-      { oid: "stash", base: "c11", name: "stash@{0}", message: "Draft" },
+      {
+        oid: "stash",
+        base: "c11",
+        name: "stash@{0}",
+        message: "Draft",
+        timestamp: 13,
+      },
     ],
   };
   const onLoadMore = vi.fn();
@@ -465,10 +471,12 @@ it("loads history then reveals a requested stash, and supports repeated clicks",
       revealStash={request}
     />,
   );
-  expect(onLoadMore).toHaveBeenCalled();
+  expect(onLoadMore).not.toHaveBeenCalled();
+  expect(screen.getByText("Draft")).toBeTruthy();
+  expect(scrollTo).toHaveBeenCalled();
   scrollTo.mockClear();
   rerender(<History {...props} commits={commits} revealStash={request} />);
-  expect(scrollTo).toHaveBeenCalled();
+  expect(scrollTo).not.toHaveBeenCalled();
   scrollTo.mockClear();
   rerender(
     <History
